@@ -1,0 +1,29 @@
+{
+  "name": "moon-discord",
+  "version": "0.0.0",
+  "description": "A Discord bot library whose representative programs compile on scriptc's static tier.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./rest": "./src/rest.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "files": [
+    "dist",
+    "src",
+    "static-contract.json"
+  ],
+  "scripts": {
+    "test": "tsx --test tests/**/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}
