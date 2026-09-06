@@ -103,11 +103,8 @@ function createMessageDispatch(
     try {
       rejectUnlessOk(response);
     } catch (error: unknown) {
-      if (onUnauthorized !== undefined && error instanceof Error && error.name === "DiscordHttpError") {
-        const status = (error as DiscordHttpError).status;
-        if (status === 401) {
-          onUnauthorized(error);
-        }
+      if (onUnauthorized !== undefined && error instanceof DiscordHttpError && error.status === 401) {
+        onUnauthorized(error);
       }
       throw error;
     }
@@ -129,11 +126,8 @@ export function createRest(
 ): RestSurface {
   http = rateLimitedHttp(http, clock, tokenDeath);
   const notifyUnauthorized = (error: Error): void => {
-    if (onUnauthorized !== undefined && error instanceof Error && error.name === "DiscordHttpError") {
-      const status = (error as DiscordHttpError).status;
-      if (status === 401) {
-        onUnauthorized(error);
-      }
+    if (onUnauthorized !== undefined && error instanceof DiscordHttpError && error.status === 401) {
+      onUnauthorized(error);
     }
   };
   const limited = http;
@@ -157,11 +151,8 @@ export function createRest(
     try {
       rejectUnlessOk(response);
     } catch (error: unknown) {
-      if (onUnauthorized !== undefined && error instanceof Error && error.name === "DiscordHttpError") {
-        const status = (error as DiscordHttpError).status;
-        if (status === 401) {
-          onUnauthorized(error);
-        }
+      if (onUnauthorized !== undefined && error instanceof DiscordHttpError && error.status === 401) {
+        onUnauthorized(error);
       }
       throw error;
     }
