@@ -107,3 +107,7 @@ _Avoid_: treating cache, TLS, RFC 6455, JSON.parse, or Discord's heartbeat inter
 **Performance contract**:
 Versioned scriptc benches plus git-recorded median and p95 baselines; a relative regression on those numbers blocks changes to the hot path.
 _Avoid_: Node unofficial numbers, peer-library comparison, invented absolute SLAs
+
+**Capability cut**:
+A public `0.x` validation artifact with a named capability slice on the road to 1.0 (REST transport, Gateway session, JSON guild-bot, then scale).
+_Avoid_: sprint, phase, treating 1.0 as a fifth cut of new surface

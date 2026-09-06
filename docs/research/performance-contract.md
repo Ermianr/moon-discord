@@ -12,7 +12,7 @@ Which benchmark scenarios, datasets, measurements, baselines, noise controls, an
 
 Three gated **hot path** scenarios, compiled as scriptc static-tier ELFs on the same lanes as the product: **Decode** and **REST dispatch** with `--backend llvm` on the `moon-discord/rest` graph; Session heartbeat with the default backend on the Gateway graph. Numbers come from library work only (test adapters, no Discord network, no RFC 6455/TLS). Budgets are median and p95 against a git-recorded baseline from the first green `linux-x86_64-glibc` run for that scenario. A PR that touches a hot path fails if either aggregated percentile is **>10%** worse than that baseline. Node unofficial timings, peer libraries, and invented absolute SLAs are not the contract.
 
-CI YAML, path filters, and when each scenario starts running in the 0.x cuts remain [Choose the delivery sequence and release gates](https://github.com/Ermianr/moon-discord/issues/13). This note is the *what* and *fail/pass rule*; ticket 13 is the *when* and *how the job is invoked*.
+CI YAML, path filters, and when each scenario starts running in the 0.x cuts: [Choose the delivery sequence and release gates](https://github.com/Ermianr/moon-discord/issues/13) (`docs/research/delivery-sequence-and-release-gates.md`). This note is the *what* and *fail/pass rule*; that note is the *when* and *how the job is invoked*.
 
 ## What is gated
 
@@ -62,13 +62,13 @@ Until a cut has landed the path and recorded that file, that scenario cannot fai
 
 **Fail** if either aggregated median or aggregated p95 is **>10%** relative above the baseline.
 
-A PR **blocks** when its diff touches **Decode**, Rest dispatch, Session heartbeat, or their fixtures/benches. Unrelated docs/skills PRs do not take this gate. How CI detects “touches the hot path” is ticket 13.
+A PR **blocks** when its diff touches **Decode**, Rest dispatch, Session heartbeat, or their fixtures/benches. Unrelated docs/skills PRs do not take this gate. Path prefixes and when each scenario starts: [Choose the delivery sequence and release gates](https://github.com/Ermianr/moon-discord/issues/13) (`docs/research/delivery-sequence-and-release-gates.md`).
 
 ## What this ticket does not decide
 
-- Workflow YAML, path filters, changelog, and SemVer tag numbers (ticket 13).
+- Workflow YAML, path filters, changelog, and SemVer tag numbers: [Choose the delivery sequence and release gates](https://github.com/Ermianr/moon-discord/issues/13) (`docs/research/delivery-sequence-and-release-gates.md`).
 - Failure/backpressure types: [Define failure, cancellation, and backpressure semantics](https://github.com/Ermianr/moon-discord/issues/12) (`docs/research/failure-cancellation-and-backpressure.md`).
-- Multipart Rest encode/dispatch as a gated scenario (resolved no: [Choose a static-tier encoding for Discord multipart REST](https://github.com/Ermianr/moon-discord/issues/14); ticket 13 may add a non-budget smoke).
+- Multipart Rest encode/dispatch as a gated scenario (resolved no: [Choose a static-tier encoding for Discord multipart REST](https://github.com/Ermianr/moon-discord/issues/14); cut 4 adds a non-budget encode smoke per [delivery sequence](./delivery-sequence-and-release-gates.md)).
 - Gateway **transport** CPU (RFC 6455, `tls.connect` C-fallback). The product **hot path** list is Decode, heartbeat emit, and REST dispatch. Characterizing C-fallback sockets stays the [scriptc baseline](./scriptc-static-capability-baseline.md) caveat and map fog (later LLVM `tls.connect`), not a fourth gate here.
 - Observability APIs (map fog).
 

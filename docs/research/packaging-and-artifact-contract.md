@@ -13,7 +13,7 @@ What source package, compiled fixtures, native artifacts, compatibility metadata
 
 Publish **`moon-discord` on npm** as ESM: emitted JavaScript, `.d.ts`, and TypeScript source. Consumers write `import { Client } from "moon-discord"` and compile with **`scriptc build <bot> --npm-static moon-discord`**, never `--dynamic`. Node execution is not a product promise. Each public tag (first public `0.x` onward) attaches **`scriptc coverage` evidence** on the GitHub Release and ships a **`static-contract.json`** in the tarball that names the representative program entries and compile lanes. There is no published library ELF/`--lib` archive. Sample-bot ELFs are optional extras, not the contract.
 
-Exact CI command lists and SemVer cut numbers stay with [Choose the delivery sequence and release gates](https://github.com/Ermianr/moon-discord/issues/13).
+Exact CI command lists and SemVer cut numbers: [Choose the delivery sequence and release gates](https://github.com/Ermianr/moon-discord/issues/13) (`docs/research/delivery-sequence-and-release-gates.md`).
 
 ## Why npm is not static by default
 
@@ -64,7 +64,7 @@ Representative bot **source** lives in git at the tag; `static-contract.json` po
 
 ## What this ticket does not decide
 
-- CI workflow YAML, changelog, and `0.1` / `0.2` / `1.0` tag numbers ([Choose the delivery sequence and release gates](https://github.com/Ermianr/moon-discord/issues/13)).
+- CI workflow YAML, changelog, and `0.1` / `0.2` / `1.0` tag numbers: [Choose the delivery sequence and release gates](https://github.com/Ermianr/moon-discord/issues/13) (`docs/research/delivery-sequence-and-release-gates.md`).
 - Targets past linux x86_64 glibc (still map fog).
 - Whether a later LLVM `tls.connect` lowering retires the Gateway C-fallback lane (still map fog).
 - Internal module seams ([Choose the static core architecture](https://github.com/Ermianr/moon-discord/issues/7)).
