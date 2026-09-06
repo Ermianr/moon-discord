@@ -116,7 +116,7 @@ Observability stays map fog: no logging port in this architecture.
 
 ## Explicit non-decisions
 
-- Numeric timeouts, queue bounds, and error types ([Define failure, cancellation, and backpressure semantics](https://github.com/Ermianr/moon-discord/issues/12)).
+- Numeric timeouts, queue bounds, and error types: [Define failure, cancellation, and backpressure semantics](https://github.com/Ermianr/moon-discord/issues/12) (`docs/research/failure-cancellation-and-backpressure.md`).
 - Heartbeat / decode / REST dispatch budgets: [Set the performance contract](https://github.com/Ermianr/moon-discord/issues/10) (`docs/research/performance-contract.md`).
 - Cache interface (resolved: [Choose the optional cache boundary](https://github.com/Ermianr/moon-discord/issues/11)).
 - Multipart encoding (ticket 14) and Ed25519 (ticket 15).

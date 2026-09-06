@@ -67,7 +67,7 @@ A PR **blocks** when its diff touches **Decode**, Rest dispatch, Session heartbe
 ## What this ticket does not decide
 
 - Workflow YAML, path filters, changelog, and SemVer tag numbers (ticket 13).
-- Failure/backpressure types (ticket 12).
+- Failure/backpressure types: [Define failure, cancellation, and backpressure semantics](https://github.com/Ermianr/moon-discord/issues/12) (`docs/research/failure-cancellation-and-backpressure.md`).
 - Multipart Rest dispatch as a later gated scenario (encoding: ticket 14; revisit after that lands).
 - Gateway **transport** CPU (RFC 6455, `tls.connect` C-fallback). The product **hot path** list is Decode, heartbeat emit, and REST dispatch. Characterizing C-fallback sockets stays the [scriptc baseline](./scriptc-static-capability-baseline.md) caveat and map fog (later LLVM `tls.connect`), not a fourth gate here.
 - Observability APIs (map fog).

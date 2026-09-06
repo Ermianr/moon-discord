@@ -51,7 +51,7 @@ API version is not configurable (REST `/api/v10`, Gateway `?v=10&encoding=json`)
 - `disconnect()` stops heartbeats and sockets. Close `1000`/`1001` invalidation is internal.
 - `connect()` without `intents` → configuration error (no socket).
 - Second `connect()` on a live Client → configuration error. `connect` after `disconnect` is allowed.
-- Fatal: REST/Gateway 401 (token), Gateway `4013`/`4014` (intents), `4010` (shard count). No reconnect spin.
+- Fatal: REST/Gateway 401 (token), Gateway `4013`/`4014` (intents), `4010` (shard count). No reconnect spin. `closed` rejects; error types are [Define failure, cancellation, and backpressure semantics](https://github.com/Ermianr/moon-discord/issues/12).
 - Handler throws do not tear down the session.
 
 ### Rest

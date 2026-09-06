@@ -98,9 +98,9 @@ Methods may be used only after `connect()` has resolved at least once on this li
 
 If `{ id, count }` does not own the required shard: configuration error, no Identify on a foreign tuple.
 
-While a target Session is reconnecting: presence goes to Sessions that are Ready now; when the down Session Identifies again it carries last presence. Guild-scoped sends **wait** until that Session is Ready/Resumed, with a **bounded** wait. `disconnect()` or a fatal Client failure fails the send. The numeric timeout, queue bound, and error types are [Define failure, cancellation, and backpressure semantics](https://github.com/Ermianr/moon-discord/issues/12).
+While a target Session is reconnecting: presence goes to Sessions that are Ready now; when the down Session Identifies again it carries last presence. Guild-scoped sends **wait** until that Session is Ready/Resumed, up to `GATEWAY_SESSION_WAIT_MS`, then `SaturatedError`. `disconnect()` fails the send with `CancelledError`; a fatal Client failure fails it with that fatal error. Types and caps: [Define failure, cancellation, and backpressure semantics](https://github.com/Ermianr/moon-discord/issues/12).
 
-Outbound JSON **must not** exceed **4096** UTF-8 bytes: the send fails and the socket stays up (do not provoke 4002). Per connection, pace application Gateway events to Discord’s **120 / 60s**. Heartbeat, Identify, and Resume are liveness/handshake: they are not stuck behind `requestGuildMembers`. `RATE_LIMITED` remains Dispatch `t` via `on`. How a failed send is thrown is ticket 12.
+Outbound JSON **must not** exceed **4096** UTF-8 bytes: `ConfigurationError`, socket stays up (do not provoke 4002). Per connection, pace application Gateway events to Discord’s **120 / 60s** (`GATEWAY_SEND_QUEUE` **120**; overflow is `SaturatedError`). Heartbeat, Identify, and Resume are liveness/handshake: they are not stuck behind `requestGuildMembers`. `RATE_LIMITED` remains Dispatch `t` via `on`. Throws: [Define failure, cancellation, and backpressure semantics](https://github.com/Ermianr/moon-discord/issues/12).
 
 ## What stays hidden
 
@@ -108,7 +108,7 @@ Session id, sequence `s`, opcodes, `resume_gateway_url`, heartbeat timers, RFC 6
 
 ## Explicit non-decisions
 
-- Error/abort/backpressure types and the numeric wait/queue caps (ticket 12).
+- Error/abort/backpressure types and the numeric wait/queue caps: [Define failure, cancellation, and backpressure semantics](https://github.com/Ermianr/moon-discord/issues/12) (`docs/research/failure-cancellation-and-backpressure.md`).
 - Module/adapter layout of Session vs transport (ticket 7).
 - Optional cache of guilds after Ready (resolved: [Choose the optional cache boundary](https://github.com/Ermianr/moon-discord/issues/11)).
 - Heartbeat and decode **performance** budgets: [Set the performance contract](https://github.com/Ermianr/moon-discord/issues/10) (`docs/research/performance-contract.md`).

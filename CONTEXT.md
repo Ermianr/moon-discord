@@ -76,6 +76,14 @@ _Avoid_: ShardManager, worker, public shardId on Dispatch handlers
 An application-triggered Gateway opcode on Client (presence, voice state, request members, soundboard sounds, channel info), not heartbeat, Identify, or Resume.
 _Avoid_: opcode hatch, nested gateway session object
 
+**Closed**:
+The Client Promise for Gateway lifetime: fulfills on disconnect, rejects on a fatal Client failure.
+_Avoid_: close event, debug event, onFatal, ShardManager death
+
+**Configuration error**:
+A Client or call misuse detected before Discord I/O.
+_Avoid_: Discord HTTP error for these cases, TypeError as the product type
+
 **Cache**:
 An optional Client-owned map from Snowflake to the last inbound snapshot of a Discord resource. Off by default; lookup does not fetch.
 _Avoid_: Collection, manager, mandatory store, live Guild or Message class

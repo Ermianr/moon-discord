@@ -24,7 +24,7 @@ Hand-written closed structs and copy-**Decode** against official Discord docs. *
 - **Inbound model:** Decode output for Rest GET/list responses and **Dispatch** payloads. Extra keys dropped. Documented required fields are required. One inbound type per documented event/resource *shape* (e.g. create vs update), not a kitchen-sink `Message` with everything optional. Nested objects are shared only when Discord documents the same object.
 - **Outbound model:** caller-built Rest body or query. Optional documented fields are omitted from the record (no `undefined` in `JSON.stringify`; scriptc stringify follows declaration order). JSON `null` is used only where Discord documents a clear. PATCH omit vs null stay distinct.
 - 204 No Content → `void`.
-- Discord JSON errors Decode to `{ code: number, message: string, errors?: unknown }`. How that value is thrown or surfaced is [Define failure, cancellation, and backpressure semantics](https://github.com/Ermianr/moon-discord/issues/12).
+- Discord JSON errors Decode to `{ code: number, message: string, errors?: unknown }` and are thrown as `DiscordHttpError` ([Define failure, cancellation, and backpressure semantics](https://github.com/Ermianr/moon-discord/issues/12)).
 
 ## Scalars and collections
 
