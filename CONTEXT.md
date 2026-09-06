@@ -75,3 +75,11 @@ _Avoid_: ShardManager, worker, public shardId on Dispatch handlers
 **Gateway send**:
 An application-triggered Gateway opcode on Client (presence, voice state, request members, soundboard sounds, channel info), not heartbeat, Identify, or Resume.
 _Avoid_: opcode hatch, nested gateway session object
+
+**Hot path**:
+The three library work units whose latency is gated: copy-Decode, Session heartbeat emit to the Gateway connection, and Rest dispatch to the HTTP adapter.
+_Avoid_: treating cache, TLS, RFC 6455, JSON.parse, or Discord's heartbeat interval as the gated work
+
+**Performance contract**:
+Versioned scriptc benches plus git-recorded median and p95 baselines; a relative regression on those numbers blocks changes to the hot path.
+_Avoid_: Node unofficial numbers, peer-library comparison, invented absolute SLAs

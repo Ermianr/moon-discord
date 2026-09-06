@@ -50,7 +50,7 @@ Constructor, `on`, `onUnknownDispatch`, `rest`, `handleInteractionRequest`, and 
 
 `disconnect()` stops all owned Sessions: heartbeats cancelled, sockets closed with **1000** (session invalidation is internal). REST-only Clients never call `connect`.
 
-**READY** and **RESUMED** are ordinary **Dispatch** `t` strings. Unavailable guilds in Ready and `GUILD_DELETE` with `unavailable: true` are inbound fields only — no library-invented `guildUnavailable` events. Cache behavior is [Choose the optional cache boundary](https://github.com/Ermianr/moon-discord/issues/11).
+**READY** and **RESUMED** are ordinary **Dispatch** `t` strings. Unavailable guilds in Ready and `GUILD_DELETE` with `unavailable: true` are inbound fields only — no library-invented `guildUnavailable` events. **Cache** may keep or drop snapshots from those fields ([Choose the optional cache boundary](https://github.com/Ermianr/moon-discord/issues/11)).
 
 ## Sharding
 
@@ -110,5 +110,5 @@ Session id, sequence `s`, opcodes, `resume_gateway_url`, heartbeat timers, RFC 6
 
 - Error/abort/backpressure types and the numeric wait/queue caps (ticket 12).
 - Module/adapter layout of Session vs transport (ticket 7).
-- Optional cache of guilds after Ready (ticket 11).
-- Heartbeat and decode **performance** budgets (ticket 10).
+- Optional cache of guilds after Ready (resolved: [Choose the optional cache boundary](https://github.com/Ermianr/moon-discord/issues/11)).
+- Heartbeat and decode **performance** budgets: [Set the performance contract](https://github.com/Ermianr/moon-discord/issues/10) (`docs/research/performance-contract.md`).

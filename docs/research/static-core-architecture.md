@@ -10,7 +10,7 @@ Which deep modules and adapter seams should own the public **Client**, REST sche
 
 ## Answer
 
-One public **Client**. Four internal deep modules: **Rest**, **Decode**, **Session** (JSON Gateway machine, one per **Shard**), **Gateway transport** (RFC 6455 over `tls.connect`). Three real adapter seams: Rest HTTP, Gateway connection (text JSON), and Clock. Optional cache is a later internal collaborator, not a port. Compile lanes are separate package exports so REST-only programs never reach `tls.connect`.
+One public **Client**. Four internal deep modules: **Rest**, **Decode**, **Session** (JSON Gateway machine, one per **Shard**), **Gateway transport** (RFC 6455 over `tls.connect`). Three real adapter seams: Rest HTTP, Gateway connection (text JSON), and Clock. Optional **Cache** is a Client-internal collaborator (no-op vs memory), not an application-injected port. Compile lanes are separate package exports so REST-only programs never reach `tls.connect`.
 
 This note places modules and seams. It does not reopen the public verb set ([Choose the public Client experience](https://github.com/Ermianr/moon-discord/issues/4)), Session lifecycle ([Define Gateway lifecycle and sharding semantics](https://github.com/Ermianr/moon-discord/issues/9)), or copy-**Decode** rules ([Define decoding and typed REST evolution](https://github.com/Ermianr/moon-discord/issues/8)).
 
@@ -56,7 +56,7 @@ Two adapters means a real seam. One adapter means do not invent a port.
 | **Gateway connection** | **Gateway transport** (text JSON after RFC 6455) | in-memory text pump | **Session** |
 | **Clock** | `nowMs` + `schedule(ms) → cancel` over timers | manual clock | **Rest** (429, 50 rps) and **Session** (heartbeat, Identify backoff) |
 
-**Not ports:** **Decode** (in-process copy); `node:crypto` for WS nonce/mask (local, one production path); zlib-stream (off); cache (until [Choose the optional cache boundary](https://github.com/Ermianr/moon-discord/issues/11) justifies two adapters); logger (map fog); Ed25519 (ticket 15); public I/O on `ClientOptions`.
+**Not ports:** **Decode** (in-process copy); `node:crypto` for WS nonce/mask (local, one production path); zlib-stream (off); logger (map fog); Ed25519 (ticket 15); public I/O on `ClientOptions`. **Cache** is an internal no-op vs memory pair inside **Client**, selected by a constructor policy flag, not an injected **Adapter** ([Choose the optional cache boundary](https://github.com/Ermianr/moon-discord/issues/11)).
 
 **Gateway transport** may keep an *internal* byte duplex for framing tests (`tls.connect` vs memory bytes). That seam is not part of **Session**’s interface.
 
@@ -93,7 +93,7 @@ Tests assert through the **Client** interface (`on`, `rest`, `connect`, **Gatewa
 
 ## Optional extensions
 
-No plugin bus. Cache later attaches **inside** **Client** after successful **Decode** (Rest responses and **Dispatch**), same **inbound model**s. Until ticket 11, the collaborator is a no-op. No cache field on `ClientOptions`.
+No plugin bus. **Cache** attaches **inside** **Client** after successful **Decode** (typed Rest responses, **Dispatch**, and HTTP `handleInteractionRequest`). Same **inbound model**s. Constructor `cache` is a policy flag (`false` / `true` / per-kind); applications do not pass a cache **Adapter**. Default off: `client.cache` is `undefined`. Detail: [Choose the optional cache boundary](https://github.com/Ermianr/moon-discord/issues/11).
 
 Observability stays map fog: no logging port in this architecture.
 
@@ -117,8 +117,8 @@ Observability stays map fog: no logging port in this architecture.
 ## Explicit non-decisions
 
 - Numeric timeouts, queue bounds, and error types ([Define failure, cancellation, and backpressure semantics](https://github.com/Ermianr/moon-discord/issues/12)).
-- Heartbeat / decode / REST dispatch budgets ([Set the performance contract](https://github.com/Ermianr/moon-discord/issues/10)).
-- Cache interface (ticket 11).
+- Heartbeat / decode / REST dispatch budgets: [Set the performance contract](https://github.com/Ermianr/moon-discord/issues/10) (`docs/research/performance-contract.md`).
+- Cache interface (resolved: [Choose the optional cache boundary](https://github.com/Ermianr/moon-discord/issues/11)).
 - Multipart encoding (ticket 14) and Ed25519 (ticket 15).
 - CI command lists (ticket 13).
 - Targets past linux x86_64 glibc; later LLVM `tls.connect` or `zlib-stream` (map fog).
