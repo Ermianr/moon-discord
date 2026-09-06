@@ -1,33 +1,33 @@
 export class MoonDiscordError extends Error {
-  constructor(message?: string) {
+  constructor(message: string = "") {
     super(message);
     this.name = "MoonDiscordError";
   }
 }
 
 export class ConfigurationError extends MoonDiscordError {
-  constructor(message?: string) {
+  constructor(message: string = "") {
     super(message);
     this.name = "ConfigurationError";
   }
 }
 
 export class DecodeError extends MoonDiscordError {
-  constructor(message?: string) {
+  constructor(message: string = "") {
     super(message);
     this.name = "DecodeError";
   }
 }
 
 export class CancelledError extends MoonDiscordError {
-  constructor(message?: string) {
+  constructor(message: string = "") {
     super(message);
     this.name = "CancelledError";
   }
 }
 
 export class TransportError extends MoonDiscordError {
-  constructor(message?: string) {
+  constructor(message: string = "") {
     super(message);
     this.name = "TransportError";
   }
@@ -56,7 +56,7 @@ export class SaturatedError extends MoonDiscordError {
   readonly retryAfterMs?: number;
 
   constructor(fields: { kind: SaturatedKind; retryAfterMs?: number; message?: string }) {
-    super(fields.message);
+    super(fields.message === undefined ? "" : fields.message);
     this.name = "SaturatedError";
     this.kind = fields.kind;
     if (fields.retryAfterMs !== undefined) {
@@ -69,7 +69,7 @@ export class GatewayFatalError extends MoonDiscordError {
   readonly closeCode: number;
 
   constructor(fields: { closeCode: number; message?: string }) {
-    super(fields.message);
+    super(fields.message === undefined ? "" : fields.message);
     this.name = "GatewayFatalError";
     this.closeCode = fields.closeCode;
   }

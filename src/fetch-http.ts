@@ -11,9 +11,7 @@ export function fetchHttp(): RestHttp {
         if (typeof request.body === "string") {
           init.body = request.body;
         } else {
-          const copy = new Uint8Array(request.body.byteLength);
-          copy.set(request.body);
-          init.body = copy.buffer;
+          init.body = Buffer.from(request.body);
         }
       }
       const response = await fetch(request.url, init);
