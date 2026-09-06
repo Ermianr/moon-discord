@@ -852,7 +852,7 @@ RPC requires Discord approval. **Out of 1.0**.[S4]
 4. **Create Guild / Delete Guild / Create from Template:** absent from current Guild/Template resource pages — confirm removal vs docs gap before exposing methods.
 5. **Edit Application Command Permissions** needs Bearer — does 1.0 ship a minimal Bearer helper or omit the method?
 6. **HTTP Interactions vs Gateway-only 1.0:** both are official; scriptc static HTTP server vs Gateway-only product cut.
-7. **Ed25519:** official HTTP interactions require it; scriptc `node:crypto` surface may lack verify — capability ticket, not Discord fog.
+7. **Ed25519:** official HTTP interactions require it; verify on the static tier is an owned TypeScript port ([issue 15](https://github.com/Ermianr/moon-discord/issues/15)), not `node:crypto`.
 8. **`capabilities` Identify bitfield** (`CHANNEL_OBFUSCATION`) is explicitly temporary/testing — default 0 for 1.0.
 9. **Gateway `RATE_LIMITED` dispatch** vs HTTP 429 — library must not conflate them.
 10. **Webhook Events** (`APPLICATION_AUTHORIZED`) are the only documented install signal over HTTP and are **not** Gateway events — if install tracking is in 1.0, that is a separate HTTP product.

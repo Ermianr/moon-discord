@@ -42,7 +42,7 @@ This note places modules and seams. It does not reopen the public verb set ([Cho
 | **Session** | Start/stop over **Gateway connection** text; emit **Dispatch** / **unknown dispatch**; honor [lifecycle note](https://github.com/Ermianr/moon-discord/issues/9) | Hello/Identify/Resume, `s` / `session_id` / resume URL, heartbeat jitter/ACK, Identify stagger, close-code machine. **No TLS, frames, SHA-1, masking.** |
 | **Gateway transport** | Satisfies Gateway connection | `tls.connect`, HTTP Upgrade, RFC 6455 framing/masks, size caps, `?v=10&encoding=json` with no `compress` |
 
-**Handle interaction HTTP** is a **Client** method. Its implementation lives in the Rest compile graph (verify + **Decode** + the same `on("INTERACTION_CREATE")` path). It is not a fifth deep module. Ed25519 is [Choose how HTTP Interactions signatures verify on the static tier](https://github.com/Ermianr/moon-discord/issues/15).
+**Handle interaction HTTP** is a **Client** method. Its implementation lives in the Rest compile graph (**Interaction signature** verify + **Decode** + the same `on("INTERACTION_CREATE")` path). It is not a fifth deep module. Verify: [Choose how HTTP Interactions signatures verify on the static tier](https://github.com/Ermianr/moon-discord/issues/15) (`docs/research/http-interaction-signature-verify.md`).
 
 **Gateway send** methods on **Client** route to the owning **Session**(s). They are not a nested `gateway` object and not an opcode hatch.
 
@@ -56,7 +56,7 @@ Two adapters means a real seam. One adapter means do not invent a port.
 | **Gateway connection** | **Gateway transport** (text JSON after RFC 6455) | in-memory text pump | **Session** |
 | **Clock** | `nowMs` + `schedule(ms) → cancel` over timers | manual clock | **Rest** (429, 50 rps) and **Session** (heartbeat, Identify backoff) |
 
-**Not ports:** **Decode** (in-process copy); `node:crypto` for WS nonce/mask (local, one production path); zlib-stream (off); logger (map fog); Ed25519 (ticket 15); public I/O on `ClientOptions`. **Cache** is an internal no-op vs memory pair inside **Client**, selected by a constructor policy flag, not an injected **Adapter** ([Choose the optional cache boundary](https://github.com/Ermianr/moon-discord/issues/11)).
+**Not ports:** **Decode** (in-process copy); `node:crypto` for WS nonce/mask (local, one production path); zlib-stream (off); logger (map fog); **Interaction signature** verify (owned TypeScript in the Rest graph); public I/O on `ClientOptions`. **Cache** is an internal no-op vs memory pair inside **Client**, selected by a constructor policy flag, not an injected **Adapter** ([Choose the optional cache boundary](https://github.com/Ermianr/moon-discord/issues/11)).
 
 **Gateway transport** may keep an *internal* byte duplex for framing tests (`tls.connect` vs memory bytes). That seam is not part of **Session**’s interface.
 
@@ -103,7 +103,7 @@ Observability stays map fog: no logging port in this architecture.
 
 **Gateway `MESSAGE_CREATE`:** `connect` (only on `"."`) → Get Gateway Bot via Rest → Session Identify → Gateway transport text → header **Decode** → payload **Decode** → `on(t)` or `onUnknownDispatch`.
 
-**HTTP `handleInteractionRequest`:** caller server → **Client** (Rest graph) → verify (ticket 15) → **Decode** → `on("INTERACTION_CREATE")` → answer via Rest. No **Session**.
+**HTTP `handleInteractionRequest`:** caller server → **Client** (Rest graph) → **Interaction signature** → **Decode** → `on("INTERACTION_CREATE")` → answer via Rest. No **Session**.
 
 ## Considered options
 
@@ -119,6 +119,6 @@ Observability stays map fog: no logging port in this architecture.
 - Numeric timeouts, queue bounds, and error types: [Define failure, cancellation, and backpressure semantics](https://github.com/Ermianr/moon-discord/issues/12) (`docs/research/failure-cancellation-and-backpressure.md`).
 - Heartbeat / decode / REST dispatch budgets: [Set the performance contract](https://github.com/Ermianr/moon-discord/issues/10) (`docs/research/performance-contract.md`).
 - Cache interface (resolved: [Choose the optional cache boundary](https://github.com/Ermianr/moon-discord/issues/11)).
-- Ed25519 (ticket 15). Multipart encoding is resolved: [Choose a static-tier encoding for Discord multipart REST](https://github.com/Ermianr/moon-discord/issues/14) (`docs/research/static-tier-multipart-encoding.md`).
+- **Interaction signature** verify is resolved: [Choose how HTTP Interactions signatures verify on the static tier](https://github.com/Ermianr/moon-discord/issues/15) (`docs/research/http-interaction-signature-verify.md`). Multipart encoding is resolved: [Choose a static-tier encoding for Discord multipart REST](https://github.com/Ermianr/moon-discord/issues/14) (`docs/research/static-tier-multipart-encoding.md`).
 - CI command lists (ticket 13).
 - Targets past linux x86_64 glibc; later LLVM `tls.connect` or `zlib-stream` (map fog).

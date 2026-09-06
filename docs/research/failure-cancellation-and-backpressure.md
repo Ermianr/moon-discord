@@ -21,7 +21,7 @@ This note is the product error contract. It does not reopen Session reconnect ([
 | Typed Rest / hatch | Promise rejects with `MoonDiscordError` |
 | `connect()` | Rejects on fatal, `CancelledError`, or Rest failure of Get Gateway Bot; stays pending across reconnectable Session failures until **READY**/**RESUMED** |
 | **Gateway send** | Rejects with the types below; does not close the socket for oversized JSON |
-| `handleInteractionRequest` | Rejects `DecodeError` when the body cannot become an inbound model; does not call `on("INTERACTION_CREATE")` |
+| `handleInteractionRequest` | Missing `publicKey` throws `ConfigurationError`. Failed **Interaction signature** **returns** `{ status: 401, body: "invalid request signature" }` (does not throw). Rejects `DecodeError` when a verified body cannot become an inbound model; does not call `on("INTERACTION_CREATE")` |
 | Configuration misuse | `ConfigurationError`, synchronously when no I/O is required |
 
 `createTestClient` uses the same classes. `error.name` is the class name.
@@ -117,7 +117,7 @@ Tests advance **Clock**; they do not invent a second error module.
 
 ## HTTP interactions
 
-Ed25519 failure is [Choose how HTTP Interactions signatures verify on the static tier](https://github.com/Ermianr/moon-discord/issues/15). A well-formed PING still returns the success response for the caller’s server to write. A body that fails **Decode** rejects `handleInteractionRequest` with `DecodeError`; mapping that to an HTTP status is the caller’s server.
+Failed **Interaction signature** returns HTTP 401 for the caller’s server to write; it does not reject the Promise ([Choose how HTTP Interactions signatures verify on the static tier](https://github.com/Ermianr/moon-discord/issues/15)). A well-formed signed `PING` still returns the success response. A verified body that fails **Decode** rejects `handleInteractionRequest` with `DecodeError`; mapping that to an HTTP status is the caller’s server.
 
 ## What stays hidden
 
@@ -137,6 +137,6 @@ Ed25519 failure is [Choose how HTTP Interactions signatures verify on the static
 
 ## Explicit non-decisions
 
-- Ed25519 failure shape ([Choose how HTTP Interactions signatures verify on the static tier](https://github.com/Ermianr/moon-discord/issues/15)).
+- **Interaction signature** failure shape is resolved: [Choose how HTTP Interactions signatures verify on the static tier](https://github.com/Ermianr/moon-discord/issues/15) (`docs/research/http-interaction-signature-verify.md`).
 - Logging / diagnostics (map fog).
 - Observability of isolated handler throws (no logger port).

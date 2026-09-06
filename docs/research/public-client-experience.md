@@ -27,7 +27,7 @@ await client.connect();
 await client.disconnect();
 
 const http = await client.handleInteractionRequest({
-  body: unknownPayload,
+  body, // raw HTTP body string
   headers: { signature: string, timestamp: string },
 });
 ```
@@ -40,6 +40,7 @@ const http = await client.handleInteractionRequest({
 | `intents` | before `connect()` | Named `GatewayIntent` flags, OR’d into one number. Illegal as `1 << n` at bot sites. |
 | `shards` | no | Omit: one Identify without a shard tuple unless Discord requires shards. `"recommended"`: Get Gateway Bot, own every shard in this process, honor `max_concurrency`. `{ id, count }`: Identify `shard: [id, count]` for this process. |
 | `cache` | no | Omit or `false`: `client.cache` is `undefined`. `true` or a kind object: in-memory **Cache snapshot** maps after **Decode**. Not an injected adapter. Detail: [Choose the optional cache boundary](https://github.com/Ermianr/moon-discord/issues/11). |
+| `publicKey` | before `handleInteractionRequest` | Hex application public key (Developer Portal). Omit for REST-only / Gateway receive. Missing on handle → configuration error. **Interaction signature** verify: [Choose how HTTP Interactions signatures verify on the static tier](https://github.com/Ermianr/moon-discord/issues/15). |
 
 API version is not configurable (REST `/api/v10`, Gateway `?v=10&encoding=json`).
 
@@ -67,7 +68,7 @@ API version is not configurable (REST `/api/v10`, Gateway `?v=10&encoding=json`)
 ### HTTP interactions
 
 - `handleInteractionRequest` is the inbound HTTP Interactions Endpoint URL **Seam**. The caller owns listen/bind. The library does not ship `listen({ port })` on Client (no LLVM HTTPS server in core; see ADR-0001).
-- Body enters as `unknown`. Signature verify is behind the method ([Choose how HTTP Interactions signatures verify on the static tier](https://github.com/Ermianr/moon-discord/issues/15)).
+- Body enters as the raw HTTP **string**. **Interaction signature** verify is inside the method ([Choose how HTTP Interactions signatures verify on the static tier](https://github.com/Ermianr/moon-discord/issues/15) / `docs/research/http-interaction-signature-verify.md`).
 - Same `on("INTERACTION_CREATE")` handlers as Gateway. Answers go through HTTP callback REST (`createInteractionResponse` / followups), never Gateway send.
 - Discord: Interactions Endpoint URL and Gateway `INTERACTION_CREATE` are mutually exclusive receive modes. `connect()` plus this handle on the same application is a configuration error. REST followups remain legal.
 
@@ -106,7 +107,7 @@ await client.connect();
 **HTTP interactions (no Gateway)**
 
 ```ts
-const client = new Client({ token });
+const client = new Client({ token, publicKey });
 client.on("INTERACTION_CREATE", async (interaction) => {
   await client.rest.createInteractionResponse(interaction.id, interaction.token, {
     type: 4,

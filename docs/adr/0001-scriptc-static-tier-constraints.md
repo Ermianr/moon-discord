@@ -4,4 +4,4 @@ moon-discord's compile promise is the engine-free static tier with no `--dynamic
 
 **Considered options:** wait for LLVM `tls.connect`; use `--dynamic` plus `ws`; treat the surface manifest as blocking TLS. Those either delay the Gateway path, violate the product bar, or contradict the installed 0.0.36 compiler.
 
-**Consequences:** pin scriptc 0.0.36 until the capability matrix is rerun; CI must assert LLVM for REST-only entries and accept only the known TLS C-fallback note on Gateway entries. HTTP Interactions Endpoint URL verification cannot assume `node:crypto` signatures, HMAC, or WebCrypto on this compiler.
+**Consequences:** pin scriptc 0.0.36 until the capability matrix is rerun; CI must assert LLVM for REST-only entries and accept only the known TLS C-fallback note on Gateway entries. HTTP Interactions Endpoint URL **Interaction signature** verify does not use `node:crypto` signatures, HMAC, or WebCrypto on this compiler; it is an owned TypeScript port ([Choose how HTTP Interactions signatures verify on the static tier](https://github.com/Ermianr/moon-discord/issues/15)).

@@ -89,7 +89,7 @@ One **Client** has one cache for every owned **Shard**. No per-shard maps.
 - **Decode** still only turns `unknown` into inbound/outbound models. It does not know maps exist.
 - **Rest** still only schedules HTTP. It does not read cache on the way out or GET on behalf of a miss.
 - **Session** / Gateway transport still only run the JSON machine. Resume does not replay cache.
-- Interaction signature verify (ticket 15) does not touch cache. Remember happens on the **Client** after **Decode**, on the same path as Gateway `INTERACTION_CREATE`.
+- **Interaction signature** verify does not touch cache. Remember happens on the **Client** after **Decode**, on the same path as Gateway `INTERACTION_CREATE`.
 - `createTestClient` does not grow a cache **Adapter**. Tests opt in with the same constructor flag and assert through `client.cache` and `on`.
 
 Internal no-op versus memory is a real **Adapter** pair *inside* **Client**. Applications never pass those adapters in `ClientOptions`. Redis, SQLite, and shared-process caches are not a 1.0 interface; an application that wants them listens on `on` / wraps **Rest** itself.

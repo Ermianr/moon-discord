@@ -39,7 +39,7 @@ Invalid-request tracking: too many 401/403/429 can get the app temporarily block
 
 ## Interactions HTTP
 
-If the bot uses the interactions incoming-webhook model: verify Ed25519 signatures, respond within **3 seconds**. That path can ship without Gateway. Crypto: scriptc static `crypto` where coverage allows; otherwise keep verify in this module and confirm with `scriptc coverage`.
+If the bot uses the interactions incoming-webhook model: verify the **Interaction signature** (owned TypeScript Ed25519 in the Rest graph; not `node:crypto` on 0.0.36), respond within **3 seconds**. That path can ship without Gateway. See `docs/research/http-interaction-signature-verify.md`.
 
 ## DX for routes
 
