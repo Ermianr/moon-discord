@@ -67,7 +67,7 @@ Requirements, not suggestions.
 2. Construct requests from strings, `Uint8Array`, and record headers. Pin `https://discord.com/api/v10`. Set `User-Agent: DiscordBot ($url, $versionNumber)` and `Authorization: Bot <token>` where required.[D3]
 3. Honor Discord rate limits from headers, not hardcoded quotas: `X-RateLimit-Bucket`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `X-RateLimit-Reset-After`, `X-RateLimit-Scope`, `Retry-After` / body `retry_after`. Global cap **50 requests/second** unless a documented surface (interaction callbacks) says otherwise.[D2]
 4. Decode JSON with concrete checked casts. Use `Response.bytes()` for byte bodies.
-5. Keep multipart uploads out of the initial API (`FormData` **BLOCKED**).
+5. Keep multipart uploads out of the **initial** JSON Rest API (`FormData` **BLOCKED**). 1.0 cut-4 encoding is an owned `Uint8Array` multipart body, not `FormData`: [Choose a static-tier encoding for Discord multipart REST](https://github.com/Ermianr/moon-discord/issues/14).
 6. Do not claim HTTP-proxy support until probed.
 
 ### Gateway transport

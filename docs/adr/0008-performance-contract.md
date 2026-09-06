@@ -4,4 +4,4 @@
 
 **Considered options:** gate through **Client** or live sockets; include `JSON.parse`, 429 waits, Hello jitter, or RFC 6455/TLS in the timer; absolute SLAs or discord.js comparison; every PR vs tags-only; alloc/RSS metrics. Those either measure the unofficial Node path, mix protocol/I/O noise into CPU budgets, or postpone the pillar until a profiler or a release tag.
 
-**Consequences:** benches are in-repo programs, not public exports and not `static-contract.json` entries. Cache stays off in gated runs. Multipart Rest dispatch is not a scenario until [Choose a static-tier encoding for Discord multipart REST](https://github.com/Ermianr/moon-discord/issues/14). Detail: `docs/research/performance-contract.md`.
+**Consequences:** benches are in-repo programs, not public exports and not `static-contract.json` entries. Cache stays off in gated runs. Multipart Rest encode is not a gated **hot path** ([Choose a static-tier encoding for Discord multipart REST](https://github.com/Ermianr/moon-discord/issues/14)). Detail: `docs/research/performance-contract.md`.

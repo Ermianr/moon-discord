@@ -35,7 +35,7 @@ Hand-written closed structs and copy-**Decode** against official Discord docs. *
 
 ## Seams
 
-- Typed Rest: success body Decode or the Promise fails. No half-filled inbound. Hatch: `execute({ method, path, query?, body?, auditReason? }) => Promise<unknown>` on success; still not the happy path; still not `any`. Hatch is not a substitute for a method promised at 1.0 ([Define 1.0 completeness and pre-1.0 milestones](https://github.com/Ermianr/moon-discord/issues/5)).
+- Typed Rest: success body Decode or the Promise fails. No half-filled inbound. Hatch: `execute({ method, path, query?, body?, files?, auditReason? }) => Promise<unknown>` on success; still not the happy path; still not `any`. `files` is an **outbound file** list (multipart), not JSON inside `body`. Hatch is not a substitute for a method promised at 1.0 ([Define 1.0 completeness and pre-1.0 milestones](https://github.com/Ermianr/moon-discord/issues/5)). Encoding: [Choose a static-tier encoding for Discord multipart REST](https://github.com/Ermianr/moon-discord/issues/14).
 - Gateway: unreadable envelope header (`op` / `t`) is a protocol failure for [Define Gateway lifecycle and sharding semantics](https://github.com/Ermianr/moon-discord/issues/9). A readable catalog `t` with a payload that fails Decode does **not** kill the session and does **not** invoke `on(t)`.
 - **Unknown dispatch** `{ t: string, d: unknown }` after header Decode: `t` outside the official catalog, or catalog `t` with failed payload Decode. **Client** observes this only via `onUnknownDispatch` (library method, not a fake Discord `t`). This extends [Choose the public Client experience](https://github.com/Ermianr/moon-discord/issues/4).
 

@@ -36,6 +36,10 @@ _Avoid_: raw JSON object, parsed payload, sharing this type with Rest request bo
 The closed structure a caller builds for a typed Rest body or query, or for a Gateway send. Absent optional keys are omitted; JSON `null` is only for documented clears.
 _Avoid_: reusing the inbound model, sending `undefined`
 
+**Outbound file**:
+The closed caller-built struct Rest encodes as a multipart file part: `filename`, `bytes`, optional `contentType`. Optional `files` on an outbound model is stripped before JSON.
+_Avoid_: FormData, Blob, fs path, Attachment (Discord’s JSON `attachments` array is a different field)
+
 **Bucket**:
 A Discord rate-limit class identified by response headers, not by a hard-coded route table.
 _Avoid_: quota, throttle (as the named limit object)
@@ -45,7 +49,7 @@ The typed HTTP surface on Client: one method per documented Discord operation.
 _Avoid_: RestManager, raw execute as the happy path
 
 **Rest hatch**:
-The controlled generic HTTP call on Rest for routes that have no typed method.
+The controlled generic HTTP call on Rest for routes that have no typed method. Optional sibling `files` are **outbound file**s, not JSON in `body`.
 _Avoid_: using it for operations Rest already names
 
 **Dispatch**:
@@ -91,6 +95,10 @@ _Avoid_: Collection, manager, mandatory store, live Guild or Message class
 **Cache snapshot**:
 The inbound model stored for a Snowflake (or guild plus user for a member), replaced by a full Decode or patched in place. Partial events do not invent a resource that was never stored.
 _Avoid_: hydrated entity, kitchen-sink optional resource
+
+**Interaction signature**:
+Ed25519 over `X-Signature-Timestamp` concatenated with the raw HTTP body string, checked with the application public key, for the Interactions Endpoint URL.
+_Avoid_: HMAC, WebCrypto, exported verify, a crypto Adapter, verifying parsed JSON
 
 **Hot path**:
 The three library work units whose latency is gated: copy-Decode, Session heartbeat emit to the Gateway connection, and Rest dispatch to the HTTP adapter.

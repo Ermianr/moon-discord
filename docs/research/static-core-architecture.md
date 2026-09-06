@@ -119,6 +119,6 @@ Observability stays map fog: no logging port in this architecture.
 - Numeric timeouts, queue bounds, and error types: [Define failure, cancellation, and backpressure semantics](https://github.com/Ermianr/moon-discord/issues/12) (`docs/research/failure-cancellation-and-backpressure.md`).
 - Heartbeat / decode / REST dispatch budgets: [Set the performance contract](https://github.com/Ermianr/moon-discord/issues/10) (`docs/research/performance-contract.md`).
 - Cache interface (resolved: [Choose the optional cache boundary](https://github.com/Ermianr/moon-discord/issues/11)).
-- Multipart encoding (ticket 14) and Ed25519 (ticket 15).
+- Ed25519 (ticket 15). Multipart encoding is resolved: [Choose a static-tier encoding for Discord multipart REST](https://github.com/Ermianr/moon-discord/issues/14) (`docs/research/static-tier-multipart-encoding.md`).
 - CI command lists (ticket 13).
 - Targets past linux x86_64 glibc; later LLVM `tls.connect` or `zlib-stream` (map fog).

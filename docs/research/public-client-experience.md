@@ -59,7 +59,7 @@ API version is not configurable (REST `/api/v10`, Gateway `?v=10&encoding=json`)
 `client.rest` is the typed HTTP surface. Callers never construct it.
 
 - One method per documented operation (`createMessage`, `getGatewayBot`, `createInteractionResponse`, …). Path ids are **Snowflake** strings. Bodies are owned structs the caller builds.
-- Escape hatch: `client.rest.execute({ method, path, query?, body?, auditReason? }): Promise<unknown>`. Not the happy path. Never `any`.
+- Escape hatch: `client.rest.execute({ method, path, query?, body?, files?, auditReason? }): Promise<unknown>`. Not the happy path. Never `any`. `files` is **outbound file**s; see [Choose a static-tier encoding for Discord multipart REST](https://github.com/Ermianr/moon-discord/issues/14).
 - REST works with no `connect` and no intents.
 - **Bucket**s, User-Agent, v10 base URL, global 50 rps, 429 waits, and interaction-callback exemption from that global cap stay inside Rest.
 - `application.id` on command routes is filled by the Client once known (READY or a lazy application GET), not passed by the caller on every call.

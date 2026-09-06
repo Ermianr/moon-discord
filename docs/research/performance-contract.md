@@ -38,7 +38,7 @@ Versioned JSON fixtures in git, official-shaped, with extra keys so drop-on-copy
 
 ## REST dispatch dataset
 
-One uncontended `createMessage` JSON-only. **Bucket** has remaining. No 429 wait, no global 50 rps delay, no multipart ([Choose a static-tier encoding for Discord multipart REST](https://github.com/Ermianr/moon-discord/issues/14)). Rate-limit waiting is **Clock** policy, not dispatch.
+One uncontended `createMessage` JSON-only. **Bucket** has remaining. No 429 wait, no global 50 rps delay, no multipart. Rate-limit waiting is **Clock** policy, not dispatch. Multipart encode is not a gated scenario ([Choose a static-tier encoding for Discord multipart REST](https://github.com/Ermianr/moon-discord/issues/14)).
 
 ## Heartbeat dataset
 
@@ -68,7 +68,7 @@ A PR **blocks** when its diff touches **Decode**, Rest dispatch, Session heartbe
 
 - Workflow YAML, path filters, changelog, and SemVer tag numbers (ticket 13).
 - Failure/backpressure types: [Define failure, cancellation, and backpressure semantics](https://github.com/Ermianr/moon-discord/issues/12) (`docs/research/failure-cancellation-and-backpressure.md`).
-- Multipart Rest dispatch as a later gated scenario (encoding: ticket 14; revisit after that lands).
+- Multipart Rest encode/dispatch as a gated scenario (resolved no: [Choose a static-tier encoding for Discord multipart REST](https://github.com/Ermianr/moon-discord/issues/14); ticket 13 may add a non-budget smoke).
 - Gateway **transport** CPU (RFC 6455, `tls.connect` C-fallback). The product **hot path** list is Decode, heartbeat emit, and REST dispatch. Characterizing C-fallback sockets stays the [scriptc baseline](./scriptc-static-capability-baseline.md) caveat and map fog (later LLVM `tls.connect`), not a fourth gate here.
 - Observability APIs (map fog).
 

@@ -73,6 +73,7 @@ No `Response`, `Headers`, or **Bucket** fields. Native `fetch` abort is wrapped 
 - Typed success body that fails **Decode**: `DecodeError` (not `DiscordHttpError`). Hatch success stays `unknown` and does not Decode.
 - Network/TLS failure of that HTTP attempt: `TransportError`. Not retried as 5xx. Get Gateway Bot is Rest: `TransportError` rejects `connect()`.
 - Interaction callback/followup routes stay exempt from the global 50 rps cap; they still honor per-route 429 waits.
+- Multipart encode (missing filename/`bytes`, required form file absent, boundary exhausted) throws `ConfigurationError` before HTTP. Discord size rejects stay `DiscordHttpError`. Layout: [Choose a static-tier encoding for Discord multipart REST](https://github.com/Ermianr/moon-discord/issues/14).
 
 ## Gateway and `closed`
 
@@ -137,6 +138,5 @@ Ed25519 failure is [Choose how HTTP Interactions signatures verify on the static
 ## Explicit non-decisions
 
 - Ed25519 failure shape ([Choose how HTTP Interactions signatures verify on the static tier](https://github.com/Ermianr/moon-discord/issues/15)).
-- Multipart encode failures ([Choose a static-tier encoding for Discord multipart REST](https://github.com/Ermianr/moon-discord/issues/14)).
 - Logging / diagnostics (map fog).
 - Observability of isolated handler throws (no logger port).
