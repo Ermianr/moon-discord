@@ -7,6 +7,46 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+type PackListing = { files: Array<{ path: string }> };
+
+function isPackListing(value: unknown): value is PackListing {
+  return typeof value === "object" && value !== null && "files" in value && Array.isArray(value.files);
+}
+
+function packedFilePaths(listingJson: string): string[] {
+  const parsed: unknown = JSON.parse(listingJson);
+  let pack: PackListing | undefined;
+  if (Array.isArray(parsed)) {
+    const first = parsed[0];
+    if (isPackListing(first)) {
+      pack = first;
+    }
+  } else if (typeof parsed === "object" && parsed !== null && "moon-discord" in parsed) {
+    const named = parsed["moon-discord"];
+    if (isPackListing(named)) {
+      pack = named;
+    }
+  }
+  if (pack === undefined) {
+    throw new Error("npm pack --json did not include a file listing");
+  }
+  return pack.files.map((file) => file.path);
+}
+
+test("reads npm pack --json array shape from npm 10 and 11", () => {
+  assert.deepEqual(
+    packedFilePaths(JSON.stringify([{ files: [{ path: "src/index.ts" }] }])),
+    ["src/index.ts"],
+  );
+});
+
+test("reads npm pack --json object shape from npm 12", () => {
+  assert.deepEqual(
+    packedFilePaths(JSON.stringify({ "moon-discord": { files: [{ path: "src/index.ts" }] } })),
+    ["src/index.ts"],
+  );
+});
+
 test("static-contract.json names the REST LLVM lane without --dynamic", () => {
   const contractPath = path.join(repoRoot, "static-contract.json");
   const contract = JSON.parse(fs.readFileSync(contractPath, "utf8")) as {
@@ -46,10 +86,7 @@ test("npm tarball ships ESM JS, d.ts, src, and static-contract — not tests or 
     cwd: repoRoot,
     encoding: "utf8",
   });
-  const parsed = JSON.parse(listing) as Record<string, { files: Array<{ path: string }> }>;
-  const pack = parsed["moon-discord"];
-  assert.ok(pack !== undefined);
-  const files = pack.files.map((file) => file.path);
+  const files = packedFilePaths(listing);
 
   assert.ok(files.includes("static-contract.json"));
   assert.ok(files.some((file) => file.startsWith("src/")));
