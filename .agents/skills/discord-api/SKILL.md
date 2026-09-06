@@ -47,7 +47,7 @@ Use **module / interface / seam / adapter** as in codebase-design. Suggested dep
 
 | Module | Callers learn | Hidden |
 | --- | --- | --- |
-| **Client** | token, intents, `on(event)`, REST verbs they need | session machine, buckets, sockets |
+| **Client** | token, intents, `on(t)`, `onUnknownDispatch`, REST verbs they need | session machine, buckets, sockets |
 | **Rest** | route + JSON body/result types | User-Agent, `X-RateLimit-*`, 429 retry, global 50 rps |
 | **Gateway** | start / stop / send (voice, presence, request members) | Hello, heartbeat+jitter, Identify/Resume, zlib |
 | **Decode** | `unknown` → owned structs | extra JSON fields, snowflake strings, null vs omit |
