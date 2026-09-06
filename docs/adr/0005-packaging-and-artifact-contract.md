@@ -1,0 +1,7 @@
+# npm `moon-discord` compiles statically only with `--npm-static`
+
+Consumers install **`moon-discord`** from npm and compile bots with `scriptc build … --npm-static moon-discord`. A bare package import is SC2013 on scriptc 0.0.36 even when the tarball is TypeScript, so the supported static path is that experimental flag plus shipped JS and `.d.ts` (TypeScript source ships for audit, not as the `--npm-static` input). `--dynamic` stays forbidden. Node is not a supported runtime. Releases from the first public `0.x` ship `static-contract.json` and GitHub Release coverage logs for named REST (LLVM) and, when present, Gateway (C fallback only on `tls.connect`) program entries. No library ELF.
+
+**Considered options:** relative-import / vendored TypeScript as the happy path; waiting on `--provenance-sources`; dual CJS; an official Node runtime; publishing `--lib` or sample ELFs as the integration artifact; encoding the promise only in npm `engines` or README. Those either abandon the public `from "moon-discord"` import, bet on an unverified compiler path, grow a second product, or leave the no-`--dynamic` claim uncheckable.
+
+**Consequences:** ADR-0001 still bans `--npm-static` for moon-discord’s *own* dependencies. Consumer CI must pass `--npm-static moon-discord`. A compiler pin bump is a change to this contract (versioning policy: [Choose the delivery sequence and release gates](https://github.com/Ermianr/moon-discord/issues/13)). Detail: `docs/research/packaging-and-artifact-contract.md`.
