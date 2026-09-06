@@ -23,3 +23,15 @@ _Avoid_: parse (as in flowing JSON.parse into an exact scriptc record)
 **Bucket**:
 A Discord rate-limit class identified by response headers, not by a hard-coded route table.
 _Avoid_: quota, throttle (as the named limit object)
+
+**Rest**:
+The typed HTTP surface on Client: one method per documented Discord operation.
+_Avoid_: RestManager, raw execute as the happy path
+
+**Dispatch**:
+An inbound Discord event identified by the Gateway `t` string, carrying a decoded payload.
+_Avoid_: camelCase aliases (messageCreate), library-invented event names
+
+**Intents**:
+Named Gateway Identify flags combined with bitwise OR.
+_Avoid_: raw bit shifts at application sites
