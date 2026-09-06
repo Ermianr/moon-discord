@@ -1,5 +1,6 @@
 import { Client as ClientImpl } from "./client.js";
 import { fetchHttp } from "./fetch-http.js";
+import "./gateway-transport.js";
 import { systemClock } from "./system-clock.js";
 import type { ClientOptions } from "./types.js";
 
