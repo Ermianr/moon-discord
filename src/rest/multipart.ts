@@ -31,7 +31,8 @@ export function encodePayloadJsonFiles(jsonText: string, files: OutboundFile[]):
     },
   ];
   for (let index = 0; index < files.length; index += 1) {
-    parts.push(filePart(`files[${String(index)}]`, files[index], `files[${String(index)}]`));
+    const name = `files[${decimal(index)}]`;
+    parts.push(filePart(name, files[index], name));
   }
   return encodeMultipart(parts);
 }
@@ -116,13 +117,49 @@ function makeBoundary(): string {
     if (value === undefined) {
       continue;
     }
-    hex += value.toString(16).padStart(2, "0");
+    hex += hexByte(value);
   }
   return `----moon${hex}`;
 }
 
+function hexByte(value: number): string {
+  return hexDigit((value >> 4) & 15) + hexDigit(value & 15);
+}
+
+function hexDigit(value: number): string {
+  if (value < 10) {
+    return String.fromCharCode(48 + value);
+  }
+  return String.fromCharCode(87 + value);
+}
+
+function decimal(value: number): string {
+  if (value === 0) {
+    return "0";
+  }
+  let remaining = value;
+  let out = "";
+  while (remaining > 0) {
+    const digit = remaining % 10;
+    out = String.fromCharCode(48 + digit) + out;
+    remaining = (remaining - digit) / 10;
+  }
+  return out;
+}
+
 function escapeQuoted(value: string): string {
-  return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+  let out = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const ch = value.charAt(index);
+    if (ch === "\\") {
+      out += "\\\\";
+    } else if (ch === '"') {
+      out += '\\"';
+    } else if (ch !== undefined) {
+      out += ch;
+    }
+  }
+  return out;
 }
 
 function utf8(value: string): Uint8Array {
@@ -145,8 +182,10 @@ function concat(chunks: Uint8Array[]): Uint8Array {
     if (chunk === undefined) {
       continue;
     }
-    out.set(chunk, offset);
-    offset += chunk.length;
+    for (let byteIndex = 0; byteIndex < chunk.length; byteIndex += 1) {
+      out[offset] = chunk[byteIndex] ?? 0;
+      offset += 1;
+    }
   }
   return out;
 }
