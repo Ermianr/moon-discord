@@ -53,7 +53,8 @@ test("large READY fixture copy-decodes owned fields and drops extras", () => {
   assert.equal("v" in ready, false);
   assert.equal("heartbeat_interval" in ready, false);
   assert.equal("trace" in ready, false);
-  assert.equal("application" in ready, false);
+  assert.equal(ready.application?.id, "613425648685547541");
+  assert.equal(ready.application !== undefined && "flags" in ready.application, false);
   const firstGuild = ready.guilds[0];
   assert.ok(firstGuild !== undefined);
   assert.equal("name" in firstGuild, false);

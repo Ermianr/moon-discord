@@ -1,4 +1,4 @@
-import type { Snowflake } from "./index.js";
+import type { Snowflake } from "./scalars.js";
 
 export type OutboundActivity = {
   name: string;

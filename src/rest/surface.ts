@@ -1,12 +1,26 @@
 import {
+  decodeApplicationCommand,
+  decodeApplicationCommandList,
+  decodeCurrentApplication,
   decodeGetGateway,
   decodeGetGatewayBot,
+  decodeGuildApplicationCommandPermissions,
+  decodeGuildApplicationCommandPermissionsList,
   decodeMessage,
   decodeSticker,
+  encodeApplicationCommandList,
+  encodeCreateApplicationCommand,
   encodeCreateMessage,
+  encodeEditApplicationCommand,
+  encodeInteractionResponse,
+  type ApplicationCommand,
+  type CreateApplicationCommand,
   type CreateMessage,
+  type EditApplicationCommand,
   type GetGateway,
   type GetGatewayBot,
+  type GuildApplicationCommandPermissions,
+  type InteractionResponse,
   type Message,
   type Snowflake,
   type Sticker,
@@ -59,6 +73,96 @@ export type RestSurface = {
   createMessage: (channelId: Snowflake, body: CreateMessageBody, options?: RestCallOptions) => Promise<Message>;
   deleteMessage: (channelId: Snowflake, messageId: Snowflake, options?: RestCallOptions) => Promise<void>;
   createGuildSticker: (guildId: Snowflake, body: CreateGuildSticker, options?: RestCallOptions) => Promise<Sticker>;
+  getGlobalApplicationCommands: (options?: RestCallOptions) => Promise<ApplicationCommand[]>;
+  createGlobalApplicationCommand: (
+    body: CreateApplicationCommand,
+    options?: RestCallOptions,
+  ) => Promise<ApplicationCommand>;
+  getGlobalApplicationCommand: (commandId: Snowflake, options?: RestCallOptions) => Promise<ApplicationCommand>;
+  editGlobalApplicationCommand: (
+    commandId: Snowflake,
+    body: EditApplicationCommand,
+    options?: RestCallOptions,
+  ) => Promise<ApplicationCommand>;
+  deleteGlobalApplicationCommand: (commandId: Snowflake, options?: RestCallOptions) => Promise<void>;
+  bulkOverwriteGlobalApplicationCommands: (
+    body: CreateApplicationCommand[],
+    options?: RestCallOptions,
+  ) => Promise<ApplicationCommand[]>;
+  getGuildApplicationCommands: (guildId: Snowflake, options?: RestCallOptions) => Promise<ApplicationCommand[]>;
+  createGuildApplicationCommand: (
+    guildId: Snowflake,
+    body: CreateApplicationCommand,
+    options?: RestCallOptions,
+  ) => Promise<ApplicationCommand>;
+  getGuildApplicationCommand: (
+    guildId: Snowflake,
+    commandId: Snowflake,
+    options?: RestCallOptions,
+  ) => Promise<ApplicationCommand>;
+  editGuildApplicationCommand: (
+    guildId: Snowflake,
+    commandId: Snowflake,
+    body: EditApplicationCommand,
+    options?: RestCallOptions,
+  ) => Promise<ApplicationCommand>;
+  deleteGuildApplicationCommand: (
+    guildId: Snowflake,
+    commandId: Snowflake,
+    options?: RestCallOptions,
+  ) => Promise<void>;
+  bulkOverwriteGuildApplicationCommands: (
+    guildId: Snowflake,
+    body: CreateApplicationCommand[],
+    options?: RestCallOptions,
+  ) => Promise<ApplicationCommand[]>;
+  getGuildApplicationCommandPermissions: (
+    guildId: Snowflake,
+    options?: RestCallOptions,
+  ) => Promise<GuildApplicationCommandPermissions[]>;
+  getApplicationCommandPermissions: (
+    guildId: Snowflake,
+    commandId: Snowflake,
+    options?: RestCallOptions,
+  ) => Promise<GuildApplicationCommandPermissions>;
+  createInteractionResponse: (
+    interactionId: Snowflake,
+    interactionToken: string,
+    body: InteractionResponse,
+    options?: RestCallOptions,
+  ) => Promise<void>;
+  getOriginalInteractionResponse: (interactionToken: string, options?: RestCallOptions) => Promise<Message>;
+  editOriginalInteractionResponse: (
+    interactionToken: string,
+    body: CreateMessage,
+    options?: RestCallOptions,
+  ) => Promise<Message>;
+  deleteOriginalInteractionResponse: (interactionToken: string, options?: RestCallOptions) => Promise<void>;
+  createFollowupMessage: (
+    interactionToken: string,
+    body: CreateMessage,
+    options?: RestCallOptions,
+  ) => Promise<Message>;
+  getFollowupMessage: (
+    interactionToken: string,
+    messageId: Snowflake,
+    options?: RestCallOptions,
+  ) => Promise<Message>;
+  editFollowupMessage: (
+    interactionToken: string,
+    messageId: Snowflake,
+    body: CreateMessage,
+    options?: RestCallOptions,
+  ) => Promise<Message>;
+  deleteFollowupMessage: (
+    interactionToken: string,
+    messageId: Snowflake,
+    options?: RestCallOptions,
+  ) => Promise<void>;
+};
+
+export type ApplicationIdentity = {
+  id: string | undefined;
 };
 
 export type CreateMessageDispatch = (
@@ -123,6 +227,7 @@ export function createRest(
   clock: Clock,
   onUnauthorized?: (error: Error) => void,
   tokenDeath?: TokenDeath,
+  applicationIdentity?: ApplicationIdentity,
 ): RestSurface {
   http = rateLimitedHttp(http, clock, tokenDeath);
   const notifyUnauthorized = (error: Error): void => {
@@ -158,6 +263,65 @@ export function createRest(
     }
   };
   const dispatchCreateMessage = createMessageDispatch(http, token, onUnauthorized);
+  const identity: ApplicationIdentity = applicationIdentity !== undefined ? applicationIdentity : { id: undefined };
+  let applicationIdWait: Promise<string> | undefined;
+  const resolveApplicationId = async (options?: RestCallOptions): Promise<string> => {
+    if (identity.id !== undefined) {
+      return identity.id;
+    }
+    if (applicationIdWait !== undefined) {
+      return applicationIdWait;
+    }
+    applicationIdWait = (async () => {
+      throwIfTokenDead(tokenDeath);
+      const httpRequest: RestHttpRequest = {
+        method: "GET",
+        url: `${API_BASE}/applications/@me`,
+        headers: botHeaders,
+      };
+      attachSignal(httpRequest, options);
+      const response = await http.request(httpRequest);
+      rejectHttp(response);
+      const application = decodeCurrentApplication(parseJsonBody(response, "Get Current Application"));
+      identity.id = application.id;
+      return application.id;
+    })();
+    try {
+      return await applicationIdWait;
+    } finally {
+      applicationIdWait = undefined;
+    }
+  };
+  const send = async (
+    method: string,
+    url: string,
+    options: RestCallOptions | undefined,
+    body?: string,
+    skipGlobalRateLimit?: boolean,
+  ): Promise<RestHttpResponse> => {
+    throwIfTokenDead(tokenDeath);
+    const headers: Record<string, string> = { ...botHeaders };
+    const httpRequest: RestHttpRequest = { method, url, headers };
+    if (body !== undefined) {
+      headers["Content-Type"] = "application/json";
+      httpRequest.body = body;
+    }
+    if (skipGlobalRateLimit === true) {
+      httpRequest.skipGlobalRateLimit = true;
+    }
+    attachSignal(httpRequest, options);
+    const response = await http.request(httpRequest);
+    rejectHttp(response);
+    return response;
+  };
+  const commandsUrl = async (suffix: string, options?: RestCallOptions): Promise<string> => {
+    const applicationId = await resolveApplicationId(options);
+    return `${API_BASE}/applications/${applicationId}${suffix}`;
+  };
+  const followupUrl = async (suffix: string, options?: RestCallOptions): Promise<string> => {
+    const applicationId = await resolveApplicationId(options);
+    return `${API_BASE}/webhooks/${applicationId}${suffix}`;
+  };
   return {
     execute: async (request) => {
       throwIfTokenDead(tokenDeath);
@@ -255,6 +419,177 @@ export function createRest(
       const response = await http.request(httpRequest);
       rejectHttp(response);
       return decodeSticker(parseJsonBody(response, "Create Guild Sticker"));
+    },
+    getGlobalApplicationCommands: async (options) => {
+      const response = await send("GET", await commandsUrl("/commands", options), options);
+      return decodeApplicationCommandList(parseJsonBody(response, "Get Global Application Commands"));
+    },
+    createGlobalApplicationCommand: async (body, options) => {
+      const response = await send(
+        "POST",
+        await commandsUrl("/commands", options),
+        options,
+        encodeCreateApplicationCommand(body),
+      );
+      return decodeApplicationCommand(parseJsonBody(response, "Create Global Application Command"));
+    },
+    getGlobalApplicationCommand: async (commandId, options) => {
+      const response = await send("GET", await commandsUrl(`/commands/${commandId}`, options), options);
+      return decodeApplicationCommand(parseJsonBody(response, "Get Global Application Command"));
+    },
+    editGlobalApplicationCommand: async (commandId, body, options) => {
+      const response = await send(
+        "PATCH",
+        await commandsUrl(`/commands/${commandId}`, options),
+        options,
+        encodeEditApplicationCommand(body),
+      );
+      return decodeApplicationCommand(parseJsonBody(response, "Edit Global Application Command"));
+    },
+    deleteGlobalApplicationCommand: async (commandId, options) => {
+      await send("DELETE", await commandsUrl(`/commands/${commandId}`, options), options);
+    },
+    bulkOverwriteGlobalApplicationCommands: async (body, options) => {
+      const response = await send(
+        "PUT",
+        await commandsUrl("/commands", options),
+        options,
+        encodeApplicationCommandList(body),
+      );
+      return decodeApplicationCommandList(parseJsonBody(response, "Bulk Overwrite Global Application Commands"));
+    },
+    getGuildApplicationCommands: async (guildId, options) => {
+      const response = await send("GET", await commandsUrl(`/guilds/${guildId}/commands`, options), options);
+      return decodeApplicationCommandList(parseJsonBody(response, "Get Guild Application Commands"));
+    },
+    createGuildApplicationCommand: async (guildId, body, options) => {
+      const response = await send(
+        "POST",
+        await commandsUrl(`/guilds/${guildId}/commands`, options),
+        options,
+        encodeCreateApplicationCommand(body),
+      );
+      return decodeApplicationCommand(parseJsonBody(response, "Create Guild Application Command"));
+    },
+    getGuildApplicationCommand: async (guildId, commandId, options) => {
+      const response = await send(
+        "GET",
+        await commandsUrl(`/guilds/${guildId}/commands/${commandId}`, options),
+        options,
+      );
+      return decodeApplicationCommand(parseJsonBody(response, "Get Guild Application Command"));
+    },
+    editGuildApplicationCommand: async (guildId, commandId, body, options) => {
+      const response = await send(
+        "PATCH",
+        await commandsUrl(`/guilds/${guildId}/commands/${commandId}`, options),
+        options,
+        encodeEditApplicationCommand(body),
+      );
+      return decodeApplicationCommand(parseJsonBody(response, "Edit Guild Application Command"));
+    },
+    deleteGuildApplicationCommand: async (guildId, commandId, options) => {
+      await send("DELETE", await commandsUrl(`/guilds/${guildId}/commands/${commandId}`, options), options);
+    },
+    bulkOverwriteGuildApplicationCommands: async (guildId, body, options) => {
+      const response = await send(
+        "PUT",
+        await commandsUrl(`/guilds/${guildId}/commands`, options),
+        options,
+        encodeApplicationCommandList(body),
+      );
+      return decodeApplicationCommandList(parseJsonBody(response, "Bulk Overwrite Guild Application Commands"));
+    },
+    getGuildApplicationCommandPermissions: async (guildId, options) => {
+      const response = await send(
+        "GET",
+        await commandsUrl(`/guilds/${guildId}/commands/permissions`, options),
+        options,
+      );
+      return decodeGuildApplicationCommandPermissionsList(
+        parseJsonBody(response, "Get Guild Application Command Permissions"),
+      );
+    },
+    getApplicationCommandPermissions: async (guildId, commandId, options) => {
+      const response = await send(
+        "GET",
+        await commandsUrl(`/guilds/${guildId}/commands/${commandId}/permissions`, options),
+        options,
+      );
+      return decodeGuildApplicationCommandPermissions(
+        parseJsonBody(response, "Get Application Command Permissions"),
+      );
+    },
+    createInteractionResponse: async (interactionId, interactionToken, body, options) => {
+      await send(
+        "POST",
+        `${API_BASE}/interactions/${interactionId}/${interactionToken}/callback`,
+        options,
+        encodeInteractionResponse(body),
+        true,
+      );
+    },
+    getOriginalInteractionResponse: async (interactionToken, options) => {
+      const response = await send(
+        "GET",
+        await followupUrl(`/${interactionToken}/messages/@original`, options),
+        options,
+        undefined,
+        true,
+      );
+      return decodeMessage(parseJsonBody(response, "Get Original Interaction Response"));
+    },
+    editOriginalInteractionResponse: async (interactionToken, body, options) => {
+      const response = await send(
+        "PATCH",
+        await followupUrl(`/${interactionToken}/messages/@original`, options),
+        options,
+        encodeCreateMessage(body),
+        true,
+      );
+      return decodeMessage(parseJsonBody(response, "Edit Original Interaction Response"));
+    },
+    deleteOriginalInteractionResponse: async (interactionToken, options) => {
+      await send("DELETE", await followupUrl(`/${interactionToken}/messages/@original`, options), options, undefined, true);
+    },
+    createFollowupMessage: async (interactionToken, body, options) => {
+      const response = await send(
+        "POST",
+        await followupUrl(`/${interactionToken}`, options),
+        options,
+        encodeCreateMessage(body),
+        true,
+      );
+      return decodeMessage(parseJsonBody(response, "Create Followup Message"));
+    },
+    getFollowupMessage: async (interactionToken, messageId, options) => {
+      const response = await send(
+        "GET",
+        await followupUrl(`/${interactionToken}/messages/${messageId}`, options),
+        options,
+        undefined,
+        true,
+      );
+      return decodeMessage(parseJsonBody(response, "Get Followup Message"));
+    },
+    editFollowupMessage: async (interactionToken, messageId, body, options) => {
+      const response = await send(
+        "PATCH",
+        await followupUrl(`/${interactionToken}/messages/${messageId}`, options),
+        options,
+        encodeCreateMessage(body),
+        true,
+      );
+      return decodeMessage(parseJsonBody(response, "Edit Followup Message"));
+    },
+    deleteFollowupMessage: async (interactionToken, messageId, options) => {
+      await send(
+        "DELETE",
+        await followupUrl(`/${interactionToken}/messages/${messageId}`, options),
+        options,
+        undefined,
+        true,
+      );
     },
   };
 }

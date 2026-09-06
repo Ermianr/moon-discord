@@ -1,6 +1,7 @@
 import {
   decodeChannelInfo,
   decodeGuildMembersChunk,
+  decodeInteraction,
   decodeMessage,
   decodeRateLimited,
   decodeReady,
@@ -278,6 +279,10 @@ export async function startSession(options: SessionOptions): Promise<SessionHand
         }
         throw error;
       }
+      return;
+    }
+    if (t === "INTERACTION_CREATE") {
+      emitDecoded("INTERACTION_CREATE", d, decodeInteraction);
       return;
     }
     if (t === "GUILD_MEMBERS_CHUNK") {

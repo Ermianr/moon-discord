@@ -1,5 +1,6 @@
 export {
   createRest,
+  type ApplicationIdentity,
   type OutboundFile,
   type RestCallOptions,
   type RestExecuteOptions,

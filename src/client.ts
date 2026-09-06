@@ -1,5 +1,5 @@
 import type { GetGatewayBot } from "./decode/index.js";
-import type { DispatchHandler, MessageCreateHandler } from "./dispatch-handlers.js";
+import type { DispatchHandler, InteractionCreateHandler, MessageCreateHandler } from "./dispatch-handlers.js";
 import {
   encodePresenceUpdate,
   encodeRequestChannelInfo,
@@ -24,7 +24,7 @@ import {
 import type { Clock, GatewayConnect, Ports } from "./ports.js";
 import { fetchHttp } from "./fetch-http.js";
 import { connectGatewayTransport } from "./gateway-transport.js";
-import { createRest, type RestSurface } from "./rest-surface.js";
+import { createRest, type ApplicationIdentity, type RestSurface } from "./rest-surface.js";
 import { startSession, type SessionHandle, type SessionOptions, type UnknownDispatch } from "./session.js";
 import { processOwnsGuild } from "./shard-membership.js";
 import { systemClock } from "./system-clock.js";
@@ -94,6 +94,10 @@ export class Client {
   #hasLastPresence = false;
   #lastPresence: PresenceUpdate = idlePresence;
   #sessionWaiters: SessionWaiter[] = [];
+  #applicationIdentity: ApplicationIdentity = { id: undefined };
+  #publicKey: string | undefined;
+  #httpIngestUsed = false;
+  #gatewayReceiveUsed = false;
 
   constructor(options: ClientOptions, ports?: Ports) {
     let resolveClosed = () => {};
@@ -109,6 +113,9 @@ export class Client {
     this.#resolveClosed = resolveClosed;
     this.#rejectClosed = rejectClosed;
     this.#token = options.token;
+    if ("publicKey" in options && options.publicKey !== undefined) {
+      this.#publicKey = options.publicKey;
+    }
     if (options.intents !== undefined) {
       this.#intents = options.intents;
       this.#hasIntents = true;
@@ -136,12 +143,13 @@ export class Client {
       if (error instanceof Error && error.name === "DiscordHttpError") {
         this.#onUnauthorized(error);
       }
-    }, this.#tokenDeath);
+    }, this.#tokenDeath, this.#applicationIdentity);
   }
 
   on(dispatch: "MESSAGE_CREATE", handler: MessageCreateHandler): () => void;
+  on(dispatch: "INTERACTION_CREATE", handler: InteractionCreateHandler): () => void;
   on(dispatch: string, handler: DispatchHandler): () => void;
-  on(dispatch: string, handler: MessageCreateHandler): () => void {
+  on(dispatch: string, handler: MessageCreateHandler | InteractionCreateHandler | DispatchHandler): () => void {
     const binding = { t: dispatch, handler };
     this.#dispatchBindings.push(binding);
     return () => {
@@ -185,11 +193,17 @@ export class Client {
     if (!this.#hasIntents) {
       return rejectWith(new ConfigurationError("intents are required before connect"));
     }
+    if (this.#httpIngestUsed) {
+      return rejectWith(
+        new ConfigurationError("connect and handleInteractionRequest cannot be used on the same Client"),
+      );
+    }
     const signal = options !== undefined ? options.signal : undefined;
     if (signal !== undefined && signal.aborted) {
       return rejectWith(new CancelledError("connect was aborted"));
     }
     this.#live = true;
+    this.#gatewayReceiveUsed = true;
     return this.#runConnect(this.#intents, this.#connectGateway, signal);
   }
 
@@ -255,6 +269,22 @@ export class Client {
 
   requestChannelInfo(query: RequestChannelInfo, options?: { signal?: AbortSignal }): Promise<void> {
     return this.#guildSend(query.guild_id, encodeRequestChannelInfo(query), options);
+  }
+
+  handleInteractionRequest(_request: { body: string; headers: Record<string, string> }): Promise<{
+    status: number;
+    body: string;
+  }> {
+    if (this.#gatewayReceiveUsed) {
+      return Promise.reject(
+        new ConfigurationError("connect and handleInteractionRequest cannot be used on the same Client"),
+      );
+    }
+    this.#httpIngestUsed = true;
+    if (this.#publicKey === undefined) {
+      return Promise.reject(new ConfigurationError("publicKey is required to handle interaction requests"));
+    }
+    return Promise.reject(new ConfigurationError("HTTP interaction ingest is not available until 1.x"));
   }
 
   async #runConnect(
@@ -329,6 +359,9 @@ export class Client {
             this.#resolveSessionWaiters();
             this.#markSessionReady();
           }
+          if (payload.t === "READY") {
+            this.#rememberApplication(payload.d);
+          }
           this.#emitDispatch(payload.t, payload.d);
         },
       };
@@ -376,6 +409,20 @@ export class Client {
         new DiscordHttpError({ status: 401, code: 0, message: error.message }),
       );
       this.#fail(error);
+    }
+  }
+
+  #rememberApplication(payload: object): void {
+    if (!("application" in payload)) {
+      return;
+    }
+    const application = payload.application;
+    if (typeof application !== "object" || application === null || Array.isArray(application) || !("id" in application)) {
+      return;
+    }
+    const id = application.id;
+    if (typeof id === "string") {
+      this.#applicationIdentity.id = id;
     }
   }
 

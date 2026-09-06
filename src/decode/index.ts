@@ -1,7 +1,26 @@
 import { DecodeError } from "../errors.js";
+import { decodeSnowflake, decodeTimestamp, type Snowflake, type Timestamp } from "./scalars.js";
 
-export type Snowflake = string;
-export type Timestamp = string;
+export type { Snowflake, Timestamp };
+export { decodeSnowflake, decodeTimestamp };
+
+export {
+  decodeApplicationCommand,
+  decodeApplicationCommandList,
+  decodeCurrentApplication,
+  decodeGuildApplicationCommandPermissions,
+  decodeGuildApplicationCommandPermissionsList,
+  encodeApplicationCommandList,
+  encodeCreateApplicationCommand,
+  encodeEditApplicationCommand,
+  type ApplicationCommand,
+  type ApplicationCommandOption,
+  type ApplicationCommandPermission,
+  type CreateApplicationCommand,
+  type CurrentApplication,
+  type EditApplicationCommand,
+  type GuildApplicationCommandPermissions,
+} from "./commands.js";
 
 export type GetGateway = {
   url: string;
@@ -57,11 +76,16 @@ export type ReadyGuild = {
   id: Snowflake;
 };
 
+export type ReadyApplication = {
+  id: Snowflake;
+};
+
 export type Ready = {
   session_id: string;
   resume_gateway_url: string;
   user: User;
   guilds: ReadyGuild[];
+  application?: ReadyApplication;
 };
 
 export function decodeReady(value: unknown): Ready {
@@ -84,12 +108,23 @@ export function decodeReady(value: unknown): Ready {
   if (typeof resume_gateway_url !== "string") {
     throw new DecodeError("READY resume_gateway_url must be a string");
   }
-  return {
+  const ready: Ready = {
     session_id,
     resume_gateway_url,
     user: decodeUser(value.user, "READY.user"),
     guilds: decodeReadyGuilds(value.guilds),
   };
+  if ("application" in value) {
+    ready.application = decodeReadyApplication(value.application);
+  }
+  return ready;
+}
+
+function decodeReadyApplication(value: unknown): ReadyApplication {
+  if (typeof value !== "object" || value === null || Array.isArray(value) || !("id" in value)) {
+    throw new DecodeError("READY.application must be an object with id");
+  }
+  return { id: decodeSnowflake(value.id, "READY.application.id") };
 }
 
 export type Resumed = {};
@@ -234,23 +269,6 @@ export function decodeSticker(value: unknown): Sticker {
     type,
     format_type,
   };
-}
-
-export function decodeSnowflake(value: unknown, field: string): Snowflake {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (typeof value === "number" && Number.isSafeInteger(value)) {
-    return String(value);
-  }
-  throw new DecodeError(`${field} must be a Snowflake string or safe integer`);
-}
-
-export function decodeTimestamp(value: unknown, field: string): Timestamp {
-  if (typeof value !== "string") {
-    throw new DecodeError(`${field} must be an ISO8601 timestamp string`);
-  }
-  return value;
 }
 
 export function encodeCreateMessage(body: CreateMessage): string {
@@ -613,4 +631,171 @@ function decodeEmbedArray(value: unknown): Embed[] {
     embeds.push(embed);
   }
   return embeds;
+}
+
+export type InteractionEntitlement = {
+  id: Snowflake;
+};
+
+export type ApplicationCommandInteractionData = {
+  id: Snowflake;
+  name: string;
+  type: number;
+};
+
+export type Interaction = {
+  id: Snowflake;
+  application_id: Snowflake;
+  type: number;
+  token: string;
+  version: number;
+  entitlements: InteractionEntitlement[];
+  authorizing_integration_owners: Map<string, Snowflake>;
+  attachment_size_limit: number;
+  data?: ApplicationCommandInteractionData;
+  guild_id?: Snowflake;
+  channel_id?: Snowflake;
+  user?: User;
+  member?: GuildMember;
+};
+
+export type InteractionCallbackData = {
+  content?: string;
+  tts?: boolean;
+  flags?: number;
+};
+
+export type InteractionResponse = {
+  type: number;
+  data?: InteractionCallbackData;
+};
+
+export function encodeInteractionResponse(body: InteractionResponse): string {
+  const payload: InteractionResponse = { type: body.type };
+  if ("data" in body && body.data !== undefined) {
+    payload.data = encodeInteractionCallbackData(body.data);
+  }
+  return JSON.stringify(payload);
+}
+
+export function decodeInteraction(value: unknown): Interaction {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new DecodeError("INTERACTION_CREATE body must be an object");
+  }
+  if (
+    !("id" in value) ||
+    !("application_id" in value) ||
+    !("type" in value) ||
+    !("token" in value) ||
+    !("version" in value) ||
+    !("entitlements" in value) ||
+    !("authorizing_integration_owners" in value) ||
+    !("attachment_size_limit" in value)
+  ) {
+    throw new DecodeError("INTERACTION_CREATE body is missing required fields");
+  }
+  const type = value.type;
+  const token = value.token;
+  const version = value.version;
+  const attachment_size_limit = value.attachment_size_limit;
+  if (typeof type !== "number" || typeof version !== "number" || typeof attachment_size_limit !== "number") {
+    throw new DecodeError("INTERACTION_CREATE type, version, and attachment_size_limit must be numbers");
+  }
+  if (typeof token !== "string") {
+    throw new DecodeError("INTERACTION_CREATE token must be a string");
+  }
+  const interaction: Interaction = {
+    id: decodeSnowflake(value.id, "INTERACTION_CREATE.id"),
+    application_id: decodeSnowflake(value.application_id, "INTERACTION_CREATE.application_id"),
+    type,
+    token,
+    version,
+    entitlements: decodeInteractionEntitlements(value.entitlements),
+    authorizing_integration_owners: decodeAuthorizingIntegrationOwners(value.authorizing_integration_owners),
+    attachment_size_limit,
+  };
+  if ("data" in value && (type === 2 || type === 4)) {
+    interaction.data = decodeApplicationCommandInteractionData(value.data);
+  }
+  if ("guild_id" in value) {
+    interaction.guild_id = decodeSnowflake(value.guild_id, "INTERACTION_CREATE.guild_id");
+  }
+  if ("channel_id" in value) {
+    interaction.channel_id = decodeSnowflake(value.channel_id, "INTERACTION_CREATE.channel_id");
+  }
+  if ("user" in value) {
+    interaction.user = decodeUser(value.user, "INTERACTION_CREATE.user");
+  }
+  if ("member" in value) {
+    interaction.member = decodeGuildMember(value.member, "INTERACTION_CREATE.member");
+  }
+  return interaction;
+}
+
+function encodeInteractionCallbackData(data: InteractionCallbackData): InteractionCallbackData {
+  const payload: InteractionCallbackData = {};
+  if ("content" in data) {
+    payload.content = data.content;
+  }
+  if ("tts" in data) {
+    payload.tts = data.tts;
+  }
+  if ("flags" in data) {
+    payload.flags = data.flags;
+  }
+  return payload;
+}
+
+function decodeInteractionEntitlements(value: unknown): InteractionEntitlement[] {
+  if (!Array.isArray(value)) {
+    throw new DecodeError("INTERACTION_CREATE entitlements must be an array");
+  }
+  const entitlements: InteractionEntitlement[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const entry = value[index];
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry) || !("id" in entry)) {
+      throw new DecodeError(`INTERACTION_CREATE.entitlements[${index}] must be an object with id`);
+    }
+    entitlements.push({ id: decodeSnowflake(entry.id, `INTERACTION_CREATE.entitlements[${index}].id`) });
+  }
+  return entitlements;
+}
+
+function decodeAuthorizingIntegrationOwners(value: unknown): Map<string, Snowflake> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new DecodeError("INTERACTION_CREATE authorizing_integration_owners must be an object");
+  }
+  const owners = new Map<string, Snowflake>();
+  const keys = Object.keys(value);
+  for (let index = 0; index < keys.length; index += 1) {
+    const key = keys[index];
+    if (key === undefined) {
+      continue;
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor === undefined || !("value" in descriptor)) {
+      continue;
+    }
+    owners.set(key, decodeSnowflake(descriptor.value, `INTERACTION_CREATE.authorizing_integration_owners.${key}`));
+  }
+  return owners;
+}
+
+function decodeApplicationCommandInteractionData(value: unknown): ApplicationCommandInteractionData {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new DecodeError("INTERACTION_CREATE.data must be an object");
+  }
+  if (!("id" in value) || !("name" in value) || !("type" in value)) {
+    throw new DecodeError("INTERACTION_CREATE.data is missing required fields");
+  }
+  const name = value.name;
+  const type = value.type;
+  if (typeof name !== "string" || typeof type !== "number") {
+    throw new DecodeError("INTERACTION_CREATE.data name must be a string and type a number");
+  }
+  return {
+    id: decodeSnowflake(value.id, "INTERACTION_CREATE.data.id"),
+    name,
+    type,
+  };
 }

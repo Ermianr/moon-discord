@@ -1,4 +1,4 @@
-import type { DispatchHandler, MessageCreateHandler } from "./dispatch-handlers.js";
+import type { DispatchHandler, InteractionCreateHandler, MessageCreateHandler } from "./dispatch-handlers.js";
 import { ConfigurationError } from "./errors.js";
 import { fetchHttp } from "./fetch-http.js";
 import { createRest, type RestSurface } from "./rest/surface.js";
@@ -10,6 +10,7 @@ export class Client {
   readonly closed: Promise<void>;
 
   #resolveClosed = () => {};
+  #httpIngestUsed = false;
 
   constructor(options: ClientOptions) {
     let resolveClosed = () => {};
@@ -23,8 +24,12 @@ export class Client {
   }
 
   on(_dispatch: "MESSAGE_CREATE", _handler: MessageCreateHandler): () => void;
+  on(_dispatch: "INTERACTION_CREATE", _handler: InteractionCreateHandler): () => void;
   on(_dispatch: string, _handler: DispatchHandler): () => void;
-  on(_dispatch: string, _handler: MessageCreateHandler): () => void {
+  on(
+    _dispatch: string,
+    _handler: MessageCreateHandler | InteractionCreateHandler | DispatchHandler,
+  ): () => void {
     return () => {};
   }
 
@@ -33,6 +38,11 @@ export class Client {
   }
 
   connect(_options?: { signal?: AbortSignal }): Promise<void> {
+    if (this.#httpIngestUsed) {
+      return Promise.reject(
+        new ConfigurationError("connect and handleInteractionRequest cannot be used on the same Client"),
+      );
+    }
     return Promise.reject(
       new ConfigurationError("connect is not available on moon-discord/rest"),
     );
@@ -63,6 +73,14 @@ export class Client {
     return this.rejectGatewaySend();
   }
 
+  handleInteractionRequest(_request: { body: string; headers: Record<string, string> }): Promise<{
+    status: number;
+    body: string;
+  }> {
+    this.#httpIngestUsed = true;
+    return Promise.reject(new ConfigurationError("HTTP interaction ingest is not available until 1.x"));
+  }
+
   rejectGatewaySend(): Promise<void> {
     return Promise.reject(
       new ConfigurationError("Gateway send is not available on moon-discord/rest"),
@@ -85,5 +103,6 @@ export {
   SaturatedError,
   TransportError,
   type ClientOptions,
+  type Interaction,
   type Message,
 } from "./public-api.js";

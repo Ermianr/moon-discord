@@ -4,6 +4,7 @@ export type RestHttpRequest = {
   headers: Record<string, string>;
   body?: string | Uint8Array;
   signal?: AbortSignal;
+  skipGlobalRateLimit?: boolean;
 };
 
 export type RestHttpResponse = {

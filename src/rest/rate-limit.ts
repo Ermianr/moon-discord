@@ -82,7 +82,7 @@ async function sendWhenReady(
         }
       }
     }
-    await waitForGlobalSlot(clock, globalSends, signal);
+    await waitForGlobalSlot(clock, globalSends, signal, httpRequest);
     let response: RestHttpResponse;
     try {
       response = await http.request(httpRequest);
@@ -125,7 +125,11 @@ async function waitForGlobalSlot(
   clock: Clock,
   globalSends: number[],
   signal: AbortSignal | undefined,
+  httpRequest: RestHttpRequest,
 ): Promise<void> {
+  if ("skipGlobalRateLimit" in httpRequest && httpRequest.skipGlobalRateLimit === true) {
+    return;
+  }
   for (;;) {
     throwIfAborted(signal);
     const now = clock.nowMs();
