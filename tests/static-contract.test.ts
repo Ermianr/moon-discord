@@ -133,7 +133,7 @@ test("PR CI typechecks, tests, and covers contract entries without a Discord tok
   assert.match(coverage, /--backend/);
   assert.match(coverage, /tls\.connect/);
   assert.match(coverage, /tls\.connectCb/);
-  assert.match(coverage, /backend === "llvm"/);
+  assert.match(coverage, /entry\.name === "gateway"/);
   assert.equal(workflow.includes("--dynamic"), false);
   assert.equal(workflow.includes("DISCORD_TOKEN"), false);
   assert.equal(workflow.includes("BOT_TOKEN"), false);

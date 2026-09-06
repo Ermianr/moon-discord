@@ -63,7 +63,7 @@ for (const entry of entries) {
     process.exit(1);
   }
   const fallbacks = libCalls(output);
-  const allowed = entry.backend === "llvm" ? [] : GATEWAY_FALLBACKS;
+  const allowed = entry.name === "gateway" ? GATEWAY_FALLBACKS : [];
   for (const name of fallbacks) {
     if (!allowed.includes(name)) {
       console.error(`coverage for ${entry.path} has unaccepted C-fallback ${name}`);
