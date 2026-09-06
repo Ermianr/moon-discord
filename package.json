@@ -49,7 +49,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "test": "node --test-force-exit --import tsx --test tests/",
+    "test": "node --test-force-exit --import tsx --test tests/**/*.test.ts",
     "typecheck": "tsc --noEmit",
     "coverage:rest": "node scripts/static-coverage.mjs",
     "prepublishOnly": "npm run build"
