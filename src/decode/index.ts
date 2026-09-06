@@ -1,4 +1,4 @@
-import { DecodeError } from "./errors.js";
+import { DecodeError } from "../errors.js";
 
 export type Snowflake = string;
 export type Timestamp = string;
@@ -51,6 +51,60 @@ export function decodeGetGatewayBot(value: unknown): GetGatewayBot {
     shards,
     session_start_limit: decodeSessionStartLimit(value.session_start_limit),
   };
+}
+
+export type ReadyGuild = {
+  id: Snowflake;
+};
+
+export type Ready = {
+  session_id: string;
+  resume_gateway_url: string;
+  user: User;
+  guilds: ReadyGuild[];
+};
+
+export function decodeReady(value: unknown): Ready {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new DecodeError("READY body must be an object");
+  }
+  if (
+    !("session_id" in value) ||
+    !("resume_gateway_url" in value) ||
+    !("user" in value) ||
+    !("guilds" in value)
+  ) {
+    throw new DecodeError("READY body must include session_id, resume_gateway_url, user, and guilds");
+  }
+  const session_id = value.session_id;
+  const resume_gateway_url = value.resume_gateway_url;
+  if (typeof session_id !== "string") {
+    throw new DecodeError("READY session_id must be a string");
+  }
+  if (typeof resume_gateway_url !== "string") {
+    throw new DecodeError("READY resume_gateway_url must be a string");
+  }
+  return {
+    session_id,
+    resume_gateway_url,
+    user: decodeUser(value.user, "READY.user"),
+    guilds: decodeReadyGuilds(value.guilds),
+  };
+}
+
+function decodeReadyGuilds(value: unknown): ReadyGuild[] {
+  if (!Array.isArray(value)) {
+    throw new DecodeError("READY guilds must be an array");
+  }
+  const guilds: ReadyGuild[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const entry = value[index];
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry) || !("id" in entry)) {
+      throw new DecodeError(`READY.guilds[${String(index)}] must be an object with id`);
+    }
+    guilds.push({ id: decodeSnowflake(entry.id, `READY.guilds[${String(index)}].id`) });
+  }
+  return guilds;
 }
 
 function decodeSessionStartLimit(value: unknown): SessionStartLimit {
@@ -209,6 +263,17 @@ export function decodeMessage(value: unknown): Message {
     pinned,
     type,
   };
+}
+
+export function decodeMessageList(value: unknown): Message[] {
+  if (!Array.isArray(value)) {
+    throw new DecodeError("Message list body must be an array");
+  }
+  const messages: Message[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    messages.push(decodeMessage(value[index]));
+  }
+  return messages;
 }
 
 function decodeNullableTimestamp(value: unknown, field: string): Timestamp | null {

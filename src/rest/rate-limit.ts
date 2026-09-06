@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
-import { CancelledError, HTTP_5XX_RETRY_MS, REST_MAX_WAIT_MS, SaturatedError, TransportError } from "./errors.js";
-import type { Clock, RestHttp, RestHttpRequest, RestHttpResponse } from "./ports.js";
-import { headerValue, mapHttpAdapterError, retryAfterMs, toDiscordHttpError } from "./rest-http-error.js";
+import { CancelledError, HTTP_5XX_RETRY_MS, REST_MAX_WAIT_MS, SaturatedError, TransportError } from "../errors.js";
+import type { Clock, RestHttp, RestHttpRequest, RestHttpResponse } from "../ports.js";
+import { headerValue, mapHttpAdapterError, retryAfterMs, toDiscordHttpError } from "./http-error.js";
 
 type BucketState = {
   remaining: number;

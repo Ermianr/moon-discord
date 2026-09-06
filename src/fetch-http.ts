@@ -1,4 +1,4 @@
-import { mapHttpAdapterError } from "./rest-http-error.js";
+import { mapHttpAdapterError } from "./rest/http-error.js";
 import type { RestHttp } from "./ports.js";
 
 export function fetchHttp(): RestHttp {

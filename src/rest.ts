@@ -1,6 +1,6 @@
 import { ConfigurationError } from "./errors.js";
 import { fetchHttp } from "./fetch-http.js";
-import { createRest, type RestSurface } from "./rest-surface.js";
+import { createRest, type RestSurface } from "./rest/surface.js";
 import { systemClock } from "./system-clock.js";
 import type { ClientOptions } from "./types.js";
 

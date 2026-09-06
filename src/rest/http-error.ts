@@ -1,5 +1,5 @@
-import { CancelledError, DiscordHttpError, TransportError } from "./errors.js";
-import type { RestHttpResponse } from "./ports.js";
+import { CancelledError, DiscordHttpError, TransportError } from "../errors.js";
+import type { RestHttpResponse } from "../ports.js";
 
 export function rejectUnlessOk(response: RestHttpResponse): void {
   if (response.status >= 200 && response.status < 300) {
