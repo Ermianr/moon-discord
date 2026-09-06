@@ -11,7 +11,12 @@
     "isolatedModules": true,
     "noEmit": true,
     "rootDir": ".",
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "moon-discord": ["./src/index.ts"],
+      "moon-discord/rest": ["./src/rest.ts"],
+      "moon-discord/testing": ["./src/testing.ts"]
+    }
   },
   "include": ["src/**/*.ts", "tests/**/*.ts"]
 }

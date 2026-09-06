@@ -36,7 +36,7 @@ export class TransportError extends MoonDiscordError {
 export class DiscordHttpError extends MoonDiscordError {
   readonly status: number;
   readonly code: number;
-  readonly errors?: unknown;
+  readonly errorsJson: string | undefined;
 
   constructor(fields: { status: number; code: number; message: string; errors?: unknown }) {
     super(fields.message);
@@ -44,8 +44,15 @@ export class DiscordHttpError extends MoonDiscordError {
     this.status = fields.status;
     this.code = fields.code;
     if ("errors" in fields) {
-      this.errors = fields.errors;
+      this.errorsJson = JSON.stringify(fields.errors);
     }
+  }
+
+  get errors(): unknown {
+    if (this.errorsJson === undefined) {
+      return undefined;
+    }
+    return JSON.parse(this.errorsJson);
   }
 }
 

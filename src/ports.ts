@@ -29,7 +29,7 @@ export type GatewayConnection = {
 export type GatewayConnectionHandlers = {
   onText: (text: string) => void;
   onClose: (code: number | undefined) => void;
-  onError: (error: unknown) => void;
+  onError: (error: Error) => void;
 };
 
 export type GatewayConnect = (

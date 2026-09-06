@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { CancelledError, HTTP_5XX_RETRY_MS, REST_MAX_WAIT_MS, SaturatedError } from "./errors.js";
+import { CancelledError, HTTP_5XX_RETRY_MS, REST_MAX_WAIT_MS, SaturatedError, TransportError } from "./errors.js";
 import type { Clock, RestHttp, RestHttpRequest, RestHttpResponse } from "./ports.js";
 import { headerValue, mapHttpAdapterError, retryAfterMs, toDiscordHttpError } from "./rest-http-error.js";
 
@@ -28,19 +28,22 @@ export function rateLimitedHttp(http: RestHttp, clock: Clock): RestHttp {
   let dispatchQueue: Promise<void> = Promise.resolve();
 
   const request = (httpRequest: RestHttpRequest): Promise<RestHttpResponse> => {
-    const sent: Promise<RestHttpResponse> = dispatchQueue.then(
-      () => sendWhenReady(http, clock, hashes, buckets, globalSends, httpRequest),
-      () => sendWhenReady(http, clock, hashes, buckets, globalSends, httpRequest),
-    );
-    dispatchQueue = sent.then(
-      () => undefined,
-      () => undefined,
-    );
-    const aborted = whenAborted(httpRequest.signal);
-    if (aborted === undefined) {
-      return sent;
-    }
-    return Promise.race([sent, aborted]);
+    const work = (async (): Promise<RestHttpResponse> => {
+      try {
+        await dispatchQueue;
+      } catch {
+        // Previous dispatch failed; this request still takes its turn.
+      }
+      return sendWhenReady(http, clock, hashes, buckets, globalSends, httpRequest);
+    })();
+    dispatchQueue = (async (): Promise<void> => {
+      try {
+        await work;
+      } catch {
+        // Keep the serial queue moving after a failed attempt.
+      }
+    })();
+    return abortableRequest(work, httpRequest.signal);
   };
 
   return { request };
@@ -188,7 +191,7 @@ function wait(clock: Clock, delayMs: number, signal: AbortSignal | undefined): P
   if (delayMs <= 0) {
     return Promise.resolve();
   }
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     const cancelTimer = clock.schedule(delayMs, () => {
       if (signal !== undefined) {
         signal.removeEventListener("abort", onAbort);
@@ -205,18 +208,41 @@ function wait(clock: Clock, delayMs: number, signal: AbortSignal | undefined): P
   });
 }
 
-function whenAborted(signal: AbortSignal | undefined): Promise<never> | undefined {
+function abortableRequest(
+  work: Promise<RestHttpResponse>,
+  signal: AbortSignal | undefined,
+): Promise<RestHttpResponse> {
   if (signal === undefined) {
-    return undefined;
+    return work;
   }
-  return new Promise((_, reject) => {
-    if (signal.aborted) {
-      reject(new CancelledError());
-      return;
-    }
-    signal.addEventListener("abort", () => {
-      reject(new CancelledError());
-    });
+  if (signal.aborted) {
+    return Promise.reject(new CancelledError());
+  }
+  return new Promise<RestHttpResponse>((resolve, reject) => {
+    let settled = false;
+    const onAbort = () => {
+      if (!settled) {
+        settled = true;
+        reject(new CancelledError());
+      }
+    };
+    signal.addEventListener("abort", onAbort);
+    void (async () => {
+      try {
+        const response = await work;
+        if (!settled) {
+          settled = true;
+          signal.removeEventListener("abort", onAbort);
+          resolve(response);
+        }
+      } catch (error: unknown) {
+        if (!settled) {
+          settled = true;
+          signal.removeEventListener("abort", onAbort);
+          reject(error instanceof Error ? error : new TransportError());
+        }
+      }
+    })();
   });
 }
 

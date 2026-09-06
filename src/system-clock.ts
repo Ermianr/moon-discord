@@ -4,7 +4,9 @@ export function systemClock(): Clock {
   return {
     nowMs: () => Date.now(),
     schedule: (delayMs, callback) => {
-      const timer = setTimeout(callback, delayMs);
+      const timer = setTimeout(() => {
+        callback();
+      }, delayMs);
       return () => {
         clearTimeout(timer);
       };

@@ -4,9 +4,43 @@
   "description": "A Discord bot library whose representative programs compile on scriptc's static tier.",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./rest": "./src/rest.ts",
-    "./testing": "./src/testing.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "node": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./rest": {
+      "types": "./dist/rest.d.ts",
+      "import": "./dist/rest.js",
+      "node": "./src/rest.ts",
+      "default": "./dist/rest.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js",
+      "node": "./src/testing.ts",
+      "default": "./dist/testing.js"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js",
+        "default": "./dist/index.js"
+      },
+      "./rest": {
+        "types": "./dist/rest.d.ts",
+        "import": "./dist/rest.js",
+        "default": "./dist/rest.js"
+      },
+      "./testing": {
+        "types": "./dist/testing.d.ts",
+        "import": "./dist/testing.js",
+        "default": "./dist/testing.js"
+      }
+    }
   },
   "files": [
     "dist",
@@ -14,8 +48,11 @@
     "static-contract.json"
   ],
   "scripts": {
-    "test": "tsx --test tests/**/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "build": "tsc -p tsconfig.build.json",
+    "test": "node --test-force-exit --import tsx --test tests/",
+    "typecheck": "tsc --noEmit",
+    "coverage:rest": "node scripts/static-coverage.mjs",
+    "prepublishOnly": "npm run build"
   },
   "engines": {
     "node": ">=22"

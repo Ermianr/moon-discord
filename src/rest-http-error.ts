@@ -1,4 +1,4 @@
-import { CancelledError, DiscordHttpError, SaturatedError, TransportError } from "./errors.js";
+import { CancelledError, DiscordHttpError, TransportError } from "./errors.js";
 import type { RestHttpResponse } from "./ports.js";
 
 export function rejectUnlessOk(response: RestHttpResponse): void {
@@ -71,13 +71,13 @@ export function retryAfterMs(response: RestHttpResponse): number | undefined {
 }
 
 export function mapHttpAdapterError(error: unknown): never {
-  if (error instanceof CancelledError || error instanceof SaturatedError || error instanceof TransportError) {
-    throw error;
-  }
-  if (error instanceof Error && error.name === "AbortError") {
-    throw new CancelledError();
-  }
   if (error instanceof Error) {
+    if (error.name === "CancelledError" || error.name === "SaturatedError" || error.name === "TransportError") {
+      throw error;
+    }
+    if (error.name === "AbortError") {
+      throw new CancelledError();
+    }
     throw new TransportError(error.message);
   }
   throw new TransportError();

@@ -1,0 +1,37 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "[0-9]*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: Install pinned scriptc
+        run: npm install -g scriptc@0.0.36
+      - run: npm run build
+      - name: REST static coverage
+        run: node scripts/static-coverage.mjs | tee coverage-rest.txt
+      - name: Attach coverage to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: coverage-rest.txt
+          fail_on_unmatched_files: true
+      - name: Publish npm
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

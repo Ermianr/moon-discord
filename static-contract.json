@@ -1,0 +1,14 @@
+{
+  "compiler": "0.0.36",
+  "dynamic": "forbidden",
+  "npmStatic": ["moon-discord"],
+  "platform": "linux-x86_64-glibc",
+  "entries": [
+    {
+      "name": "rest",
+      "path": "representatives/rest.ts",
+      "import": "moon-discord/rest",
+      "backend": "llvm"
+    }
+  ]
+}
