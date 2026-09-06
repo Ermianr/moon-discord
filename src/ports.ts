@@ -3,6 +3,7 @@ export type RestHttpRequest = {
   url: string;
   headers: Record<string, string>;
   body?: string | Uint8Array;
+  signal?: AbortSignal;
 };
 
 export type RestHttpResponse = {

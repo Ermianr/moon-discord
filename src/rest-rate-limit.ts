@@ -1,4 +1,7 @@
+import { randomBytes } from "node:crypto";
+import { CancelledError, HTTP_5XX_RETRY_MS, REST_MAX_WAIT_MS, SaturatedError } from "./errors.js";
 import type { Clock, RestHttp, RestHttpRequest, RestHttpResponse } from "./ports.js";
+import { headerValue, mapHttpAdapterError, retryAfterMs, toDiscordHttpError } from "./rest-http-error.js";
 
 type BucketState = {
   remaining: number;
@@ -25,15 +28,19 @@ export function rateLimitedHttp(http: RestHttp, clock: Clock): RestHttp {
   let dispatchQueue: Promise<void> = Promise.resolve();
 
   const request = (httpRequest: RestHttpRequest): Promise<RestHttpResponse> => {
-    const result: Promise<RestHttpResponse> = dispatchQueue.then(
+    const sent: Promise<RestHttpResponse> = dispatchQueue.then(
       () => sendWhenReady(http, clock, hashes, buckets, globalSends, httpRequest),
       () => sendWhenReady(http, clock, hashes, buckets, globalSends, httpRequest),
     );
-    dispatchQueue = result.then(
+    dispatchQueue = sent.then(
       () => undefined,
       () => undefined,
     );
-    return result;
+    const aborted = whenAborted(httpRequest.signal);
+    if (aborted === undefined) {
+      return sent;
+    }
+    return Promise.race([sent, aborted]);
   };
 
   return { request };
@@ -47,26 +54,69 @@ async function sendWhenReady(
   globalSends: number[],
   httpRequest: RestHttpRequest,
 ): Promise<RestHttpResponse> {
-  const route = routeKey(httpRequest.method, httpRequest.url);
-  const major = majorResource(httpRequest.url);
-  const hash = findHash(hashes, route);
-  if (hash !== undefined) {
-    const bucket = findBucket(buckets, `${hash}:${major}`);
-    if (bucket !== undefined && bucket.remaining === 0) {
-      const delayMs = bucket.resetAtMs - clock.nowMs();
-      if (delayMs > 0) {
-        await wait(clock, delayMs);
+  let other5xxRetried = false;
+  let retryBackoffMs = 1000;
+  const signal = httpRequest.signal;
+  for (;;) {
+    throwIfAborted(signal);
+    const route = routeKey(httpRequest.method, httpRequest.url);
+    const major = majorResource(httpRequest.url);
+    const hash = findHash(hashes, route);
+    if (hash !== undefined) {
+      const bucket = findBucket(buckets, `${hash}:${major}`);
+      if (bucket !== undefined && bucket.remaining === 0) {
+        const delayMs = bucket.resetAtMs - clock.nowMs();
+        if (delayMs > 0) {
+          await wait(clock, delayMs, signal);
+        }
       }
     }
+    await waitForGlobalSlot(clock, globalSends, signal);
+    let response: RestHttpResponse;
+    try {
+      response = await http.request(httpRequest);
+    } catch (error: unknown) {
+      mapHttpAdapterError(error);
+    }
+    rememberHeaders(hashes, buckets, clock, route, major, response.headers);
+    if (response.status >= 200 && response.status < 300) {
+      return response;
+    }
+    if (response.status === 429) {
+      const delayMs = retryAfterMs(response);
+      await wait(clock, delayMs === undefined ? 1000 : delayMs, signal);
+      continue;
+    }
+    if (response.status === 502 || response.status === 503 || response.status === 504) {
+      const headerDelay = retryAfterMs(response);
+      if (headerDelay === undefined) {
+        const delayMs = retryBackoffMs + jitterPortion(retryBackoffMs);
+        retryBackoffMs = retryBackoffMs * 2;
+        if (retryBackoffMs > 32_000) {
+          retryBackoffMs = 32_000;
+        }
+        await wait(clock, delayMs, signal);
+      } else {
+        await wait(clock, headerDelay, signal);
+      }
+      continue;
+    }
+    if (response.status >= 500 && response.status < 600 && !other5xxRetried) {
+      other5xxRetried = true;
+      await wait(clock, HTTP_5XX_RETRY_MS, signal);
+      continue;
+    }
+    throw toDiscordHttpError(response);
   }
-  await waitForGlobalSlot(clock, globalSends);
-  const response = await http.request(httpRequest);
-  rememberHeaders(hashes, buckets, clock, route, major, response.headers);
-  return response;
 }
 
-async function waitForGlobalSlot(clock: Clock, globalSends: number[]): Promise<void> {
+async function waitForGlobalSlot(
+  clock: Clock,
+  globalSends: number[],
+  signal: AbortSignal | undefined,
+): Promise<void> {
   for (;;) {
+    throwIfAborted(signal);
     const now = clock.nowMs();
     pruneGlobalSends(globalSends, now);
     if (globalSends.length < GLOBAL_RPS) {
@@ -84,7 +134,7 @@ async function waitForGlobalSlot(clock: Clock, globalSends: number[]): Promise<v
       globalSends.push(now);
       return;
     }
-    await wait(clock, delayMs);
+    await wait(clock, delayMs, signal);
   }
 }
 
@@ -130,12 +180,59 @@ function rememberHeaders(
   setBucket(buckets, `${hash}:${major}`, { remaining, resetAtMs });
 }
 
-function wait(clock: Clock, delayMs: number): Promise<void> {
-  return new Promise((resolve) => {
-    clock.schedule(delayMs, () => {
+function wait(clock: Clock, delayMs: number, signal: AbortSignal | undefined): Promise<void> {
+  throwIfAborted(signal);
+  if (delayMs > REST_MAX_WAIT_MS) {
+    return Promise.reject(new SaturatedError({ kind: "rest_wait", retryAfterMs: delayMs }));
+  }
+  if (delayMs <= 0) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    const cancelTimer = clock.schedule(delayMs, () => {
+      if (signal !== undefined) {
+        signal.removeEventListener("abort", onAbort);
+      }
       resolve();
     });
+    const onAbort = () => {
+      cancelTimer();
+      reject(new CancelledError());
+    };
+    if (signal !== undefined) {
+      signal.addEventListener("abort", onAbort);
+    }
   });
+}
+
+function whenAborted(signal: AbortSignal | undefined): Promise<never> | undefined {
+  if (signal === undefined) {
+    return undefined;
+  }
+  return new Promise((_, reject) => {
+    if (signal.aborted) {
+      reject(new CancelledError());
+      return;
+    }
+    signal.addEventListener("abort", () => {
+      reject(new CancelledError());
+    });
+  });
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal !== undefined && signal.aborted) {
+    throw new CancelledError();
+  }
+}
+
+function jitterPortion(delayMs: number): number {
+  const bytes = randomBytes(1);
+  const value = bytes[0];
+  if (value === undefined) {
+    return 0;
+  }
+  return Math.floor((value / 256) * delayMs);
 }
 
 function routeKey(method: string, url: string): string {
@@ -166,17 +263,6 @@ function majorResource(url: string): string {
     }
   }
   return "";
-}
-
-function headerValue(headers: Record<string, string>, name: string): string | undefined {
-  const keys = Object.keys(headers);
-  for (let i = 0; i < keys.length; i += 1) {
-    const key = keys[i];
-    if (key !== undefined && key.toLowerCase() === name) {
-      return headers[key];
-    }
-  }
-  return undefined;
 }
 
 function findHash(hashes: HashEntry[], route: string): string | undefined {

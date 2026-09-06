@@ -9,12 +9,17 @@ import {
   type Message,
   type Snowflake,
 } from "./decode.js";
-import { ConfigurationError, DecodeError, DiscordHttpError } from "./errors.js";
+import { ConfigurationError, DecodeError } from "./errors.js";
 import type { Clock, RestHttp, RestHttpRequest, RestHttpResponse } from "./ports.js";
 import { rateLimitedHttp } from "./rest-rate-limit.js";
+import { rejectUnlessOk, responseBodyText } from "./rest-http-error.js";
 
 const USER_AGENT = "DiscordBot (https://github.com/Ermianr/moon-discord, 0.0.0)";
 const API_BASE = "https://discord.com/api/v10";
+
+export type RestCallOptions = {
+  signal?: AbortSignal;
+};
 
 export type RestExecuteOptions = {
   method: string;
@@ -23,6 +28,7 @@ export type RestExecuteOptions = {
   body?: unknown;
   files?: OutboundFile[];
   auditReason?: string;
+  signal?: AbortSignal;
 };
 
 export type OutboundFile = {
@@ -33,10 +39,10 @@ export type OutboundFile = {
 
 export type RestSurface = {
   execute: (request: RestExecuteOptions) => Promise<unknown>;
-  getGateway: () => Promise<GetGateway>;
-  getGatewayBot: () => Promise<GetGatewayBot>;
-  createMessage: (channelId: Snowflake, body: CreateMessage) => Promise<Message>;
-  deleteMessage: (channelId: Snowflake, messageId: Snowflake) => Promise<void>;
+  getGateway: (options?: RestCallOptions) => Promise<GetGateway>;
+  getGatewayBot: (options?: RestCallOptions) => Promise<GetGatewayBot>;
+  createMessage: (channelId: Snowflake, body: CreateMessage, options?: RestCallOptions) => Promise<Message>;
+  deleteMessage: (channelId: Snowflake, messageId: Snowflake, options?: RestCallOptions) => Promise<void>;
 };
 
 export function createRest(http: RestHttp, token: string, clock: Clock): RestSurface {
@@ -65,41 +71,42 @@ export function createRest(http: RestHttp, token: string, clock: Clock): RestSur
         headers["Content-Type"] = "application/json";
         httpRequest.body = JSON.stringify(request.body);
       }
+      attachSignal(httpRequest, request);
       const response = await http.request(httpRequest);
-      if (response.status < 200 || response.status >= 300) {
-        throw new DiscordHttpError({
-          status: response.status,
-          code: 0,
-          message: `HTTP ${String(response.status)}`,
-        });
-      }
-      const text = typeof response.body === "string" ? response.body : new TextDecoder().decode(response.body);
+      rejectUnlessOk(response);
+      const text = responseBodyText(response);
       if (text === "") {
         return undefined;
       }
       const parsed: unknown = JSON.parse(text);
       return parsed;
     },
-    getGateway: async () => {
-      const response = await http.request({
+    getGateway: async (options) => {
+      const httpRequest: RestHttpRequest = {
         method: "GET",
         url: `${API_BASE}/gateway`,
         headers: {
           "User-Agent": USER_AGENT,
         },
-      });
+      };
+      attachSignal(httpRequest, options);
+      const response = await http.request(httpRequest);
+      rejectUnlessOk(response);
       return decodeGetGateway(parseJsonBody(response, "Get Gateway"));
     },
-    getGatewayBot: async () => {
-      const response = await http.request({
+    getGatewayBot: async (options) => {
+      const httpRequest: RestHttpRequest = {
         method: "GET",
         url: `${API_BASE}/gateway/bot`,
         headers: botHeaders,
-      });
+      };
+      attachSignal(httpRequest, options);
+      const response = await http.request(httpRequest);
+      rejectUnlessOk(response);
       return decodeGetGatewayBot(parseJsonBody(response, "Get Gateway Bot"));
     },
-    createMessage: async (channelId, body) => {
-      const response = await http.request({
+    createMessage: async (channelId, body, options) => {
+      const httpRequest: RestHttpRequest = {
         method: "POST",
         url: `${API_BASE}/channels/${channelId}/messages`,
         headers: {
@@ -107,15 +114,21 @@ export function createRest(http: RestHttp, token: string, clock: Clock): RestSur
           "Content-Type": "application/json",
         },
         body: encodeCreateMessage(body),
-      });
+      };
+      attachSignal(httpRequest, options);
+      const response = await http.request(httpRequest);
+      rejectUnlessOk(response);
       return decodeMessage(parseJsonBody(response, "Create Message"));
     },
-    deleteMessage: async (channelId, messageId) => {
-      await http.request({
+    deleteMessage: async (channelId, messageId, options) => {
+      const httpRequest: RestHttpRequest = {
         method: "DELETE",
         url: `${API_BASE}/channels/${channelId}/messages/${messageId}`,
         headers: botHeaders,
-      });
+      };
+      attachSignal(httpRequest, options);
+      const response = await http.request(httpRequest);
+      rejectUnlessOk(response);
     },
   };
 }
@@ -144,8 +157,14 @@ function hatchUrl(path: string, query: Record<string, string> | undefined): stri
   return `${API_BASE}${suffix}${qs}`;
 }
 
+function attachSignal(request: RestHttpRequest, options: RestCallOptions | undefined): void {
+  if (options !== undefined && "signal" in options && options.signal !== undefined) {
+    request.signal = options.signal;
+  }
+}
+
 function parseJsonBody(response: RestHttpResponse, label: string): unknown {
-  const text = typeof response.body === "string" ? response.body : new TextDecoder().decode(response.body);
+  const text = responseBodyText(response);
   try {
     const parsed: unknown = JSON.parse(text);
     return parsed;

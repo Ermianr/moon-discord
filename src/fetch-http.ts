@@ -1,3 +1,4 @@
+import { mapHttpAdapterError } from "./rest-http-error.js";
 import type { RestHttp } from "./ports.js";
 
 export function fetchHttp(): RestHttp {
@@ -14,16 +15,24 @@ export function fetchHttp(): RestHttp {
         bytes.set(request.body);
         init.body = bytes;
       }
-      const response = await fetch(request.url, init);
-      const headers: Record<string, string> = {};
-      response.headers.forEach((value, key) => {
-        headers[key] = value;
-      });
-      return {
-        status: response.status,
-        headers,
-        body: await response.bytes(),
-      };
+      if ("signal" in request && request.signal !== undefined) {
+        init.signal = request.signal;
+      }
+      try {
+        const response = await fetch(request.url, init);
+        const headers: Record<string, string> = {};
+        response.headers.forEach((value, key) => {
+          headers[key] = value;
+        });
+        return {
+          status: response.status,
+          headers,
+          body: await response.bytes(),
+        };
+      } catch (error: unknown) {
+        mapHttpAdapterError(error);
+      }
     },
   };
 }
+

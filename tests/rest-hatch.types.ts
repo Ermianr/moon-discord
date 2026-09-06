@@ -8,3 +8,6 @@ const _executeReturnsUnknown: IsAny<ExecuteResult> extends true ? never : true =
 const _filesIsSibling: Pick<ExecuteOptions, "files"> = {
   files: [{ filename: "a.txt", bytes: new Uint8Array() }],
 };
+const _signalIsOptional: Pick<ExecuteOptions, "signal"> = {
+  signal: new AbortController().signal,
+};

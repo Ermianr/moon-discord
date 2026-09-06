@@ -34,3 +34,8 @@ test("moon-discord/rest exports the same MoonDiscordError subclasses", () => {
   assert.equal(rest.TransportError, TransportError);
   assert.equal(rest.GatewayFatalError, GatewayFatalError);
 });
+
+test("moon-discord/rest exports the same REST wait constants", () => {
+  assert.equal(rest.REST_MAX_WAIT_MS, 600_000);
+  assert.equal(rest.HTTP_5XX_RETRY_MS, 1_000);
+});
