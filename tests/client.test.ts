@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Client, ConfigurationError, GatewayIntent } from "moon-discord";
+import { createTestClient } from "moon-discord/testing";
 
 test("Client constructs with a Bot token", () => {
   const client = new Client({ token: "bot-token" });
@@ -38,7 +39,39 @@ test("missing intents is a configuration error before connect I/O", async () => 
 });
 
 test("explicit intents 0 is not a missing-intents configuration error", async () => {
-  const client = new Client({ token: "bot-token", intents: 0 });
+  let opened = false;
+  const client = createTestClient(
+    { token: "bot-token", intents: 0 },
+    {
+      http: {
+        request: async () => ({
+          status: 200,
+          headers: {},
+          body: JSON.stringify({
+            url: "wss://gateway.discord.gg/",
+            shards: 1,
+            session_start_limit: {
+              total: 1000,
+              remaining: 999,
+              reset_after: 14400000,
+              max_concurrency: 1,
+            },
+          }),
+        }),
+      },
+      clock: {
+        nowMs: () => 0,
+        schedule: () => () => {},
+      },
+      gateway: async () => {
+        opened = true;
+        return {
+          sendText: () => {},
+          close: () => {},
+        };
+      },
+    },
+  );
   let rejected: unknown;
   const pending = client.connect().then(
     () => {
@@ -52,5 +85,6 @@ test("explicit intents 0 is not a missing-intents configuration error", async ()
     setTimeout(resolve, 20);
   });
   assert.equal(rejected, undefined);
+  assert.equal(opened, true);
   void pending;
 });

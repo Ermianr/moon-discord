@@ -11,3 +11,9 @@ new Client({
   // @ts-expect-error ClientOptions does not accept Clock ports
   clock: { nowMs: () => 0, schedule: () => () => {} },
 });
+
+new Client({
+  token: "bot-token",
+  // @ts-expect-error ClientOptions does not accept Gateway connection ports
+  gateway: async () => ({ sendText: () => {}, close: () => {} }),
+});

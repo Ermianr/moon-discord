@@ -21,8 +21,25 @@ export type Clock = {
   schedule: (delayMs: number, callback: () => void) => () => void;
 };
 
+export type GatewayConnection = {
+  sendText: (text: string) => void;
+  close: (code: number) => void;
+};
+
+export type GatewayConnectionHandlers = {
+  onText: (text: string) => void;
+  onClose: (code: number | undefined) => void;
+  onError: (error: unknown) => void;
+};
+
+export type GatewayConnect = (
+  url: string,
+  handlers: GatewayConnectionHandlers,
+) => Promise<GatewayConnection>;
+
 export type Ports = {
   http: RestHttp;
   clock: Clock;
   gatewayEnabled: boolean;
+  connectGateway?: GatewayConnect;
 };

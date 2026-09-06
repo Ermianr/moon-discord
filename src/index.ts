@@ -1,6 +1,6 @@
 import { Client as ClientImpl } from "./client.js";
 import { fetchHttp } from "./fetch-http.js";
-import "./gateway-transport.js";
+import { connectGatewayTransport } from "./gateway-transport.js";
 import { systemClock } from "./system-clock.js";
 import type { ClientOptions } from "./types.js";
 
@@ -10,6 +10,7 @@ export class Client extends ClientImpl {
       http: fetchHttp(),
       clock: systemClock(),
       gatewayEnabled: true,
+      connectGateway: connectGatewayTransport,
     });
   }
 }

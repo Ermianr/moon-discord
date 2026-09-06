@@ -1,6 +1,7 @@
 import { ConfigurationError } from "./errors.js";
-import type { Ports } from "./ports.js";
+import type { GatewayConnect, Ports } from "./ports.js";
 import { createRest, type RestSurface } from "./rest-surface.js";
+import { startSession, type SessionHandle, type SessionOptions } from "./session.js";
 import type { ClientOptions } from "./types.js";
 
 export type { RestSurface };
@@ -11,6 +12,7 @@ export class Client {
 
   #ports: Ports;
   #options: ClientOptions;
+  #session: SessionHandle | undefined;
   #resolveClosed = () => {};
 
   constructor(options: ClientOptions, ports: Ports) {
@@ -38,13 +40,22 @@ export class Client {
         new ConfigurationError("connect is not available on moon-discord/rest"),
       );
     }
-    if (this.#options.intents === undefined) {
+    const intents = this.#options.intents;
+    if (intents === undefined) {
       return Promise.reject(new ConfigurationError("intents are required before connect"));
     }
-    return new Promise(() => {});
+    const connectGateway = this.#ports.connectGateway;
+    if (connectGateway === undefined) {
+      return Promise.reject(new ConfigurationError("Gateway connection is not configured"));
+    }
+    return this.#runConnect(intents, connectGateway);
   }
 
   disconnect(): Promise<void> {
+    if (this.#session !== undefined) {
+      this.#session.stop(1000);
+      this.#session = undefined;
+    }
     this.#resolveClosed();
     return Promise.resolve();
   }
@@ -67,6 +78,23 @@ export class Client {
 
   requestChannelInfo(_query: unknown, _options?: { signal?: AbortSignal }): Promise<void> {
     return this.#rejectGatewaySend();
+  }
+
+  async #runConnect(intents: number, connectGateway: GatewayConnect): Promise<void> {
+    const bot = await this.rest.getGatewayBot();
+    const sessionOptions: SessionOptions = {
+      url: bot.url,
+      token: this.#options.token,
+      intents,
+      clock: this.#ports.clock,
+      connect: connectGateway,
+    };
+    const shards = this.#options.shards;
+    if (shards !== undefined && shards !== "recommended") {
+      sessionOptions.shard = [shards.id, shards.count];
+    }
+    this.#session = await startSession(sessionOptions);
+    await new Promise<void>(() => {});
   }
 
   #rejectGatewaySend(): Promise<void> {
