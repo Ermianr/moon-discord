@@ -10,7 +10,8 @@ import {
   type Snowflake,
 } from "./decode.js";
 import { ConfigurationError, DecodeError, DiscordHttpError } from "./errors.js";
-import type { RestHttp, RestHttpRequest, RestHttpResponse } from "./ports.js";
+import type { Clock, RestHttp, RestHttpRequest, RestHttpResponse } from "./ports.js";
+import { rateLimitedHttp } from "./rest-rate-limit.js";
 
 const USER_AGENT = "DiscordBot (https://github.com/Ermianr/moon-discord, 0.0.0)";
 const API_BASE = "https://discord.com/api/v10";
@@ -38,7 +39,8 @@ export type RestSurface = {
   deleteMessage: (channelId: Snowflake, messageId: Snowflake) => Promise<void>;
 };
 
-export function createRest(http: RestHttp, token: string): RestSurface {
+export function createRest(http: RestHttp, token: string, clock: Clock): RestSurface {
+  http = rateLimitedHttp(http, clock);
   const botHeaders = {
     Authorization: `Bot ${token}`,
     "User-Agent": USER_AGENT,

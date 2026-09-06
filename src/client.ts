@@ -21,7 +21,7 @@ export class Client {
     this.#resolveClosed = resolveClosed;
     this.#ports = ports;
     this.#options = options;
-    this.rest = createRest(ports.http, options.token);
+    this.rest = createRest(ports.http, options.token, ports.clock);
   }
 
   on(_dispatch: string, _handler: (payload: unknown) => void): () => void {
