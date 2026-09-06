@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Public Client experience — throwaway prototype</title>
+  <style>
+    :root {
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #e7e5e4;
+      --paper: #fafaf9;
+      --panel: #ffffff;
+      --accent: #0f766e;
+      --accent-soft: #ccfbf1;
+      --warn: #9a3412;
+      --warn-soft: #ffedd5;
+      --ok: #166534;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      color: var(--ink);
+      background: var(--paper);
+      line-height: 1.45;
+    }
+    main { max-width: 1100px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+    h1 { font-size: 1.75rem; font-weight: 600; margin: 0 0 0.5rem; letter-spacing: -0.02em; }
+    .lede { color: var(--muted); margin: 0 0 1.75rem; max-width: 46rem; }
+    .banner {
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-size: 0.75rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--warn);
+      background: var(--warn-soft);
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      margin-bottom: 1rem;
+    }
+    h2 { font-size: 1.05rem; margin: 0 0 0.75rem; }
+    button {
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-size: 0.85rem;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      color: var(--ink);
+      padding: 0.45rem 0.7rem;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover { border-color: var(--accent); }
+    button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 1rem 1.1rem 1.15rem;
+    }
+    .state dl { margin: 0; display: grid; grid-template-columns: 9.5rem 1fr; gap: 0.35rem 0.75rem; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 0.85rem; }
+    .state dt { color: var(--muted); font-weight: 500; }
+    .state dd { margin: 0; }
+    .changed { background: var(--accent-soft); box-shadow: inset 0 0 0 1px #5eead4; }
+    .row { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.5rem; }
+    .hint { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 0.8rem; color: var(--muted); margin: 0 0 0.65rem; }
+    .tabs { display: flex; gap: 0.25rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+    .tabs button[aria-selected="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .steps { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 0.85rem; }
+    .steps ol { margin: 0.5rem 0 0; padding-left: 1.2rem; }
+    .steps li { margin: 0.35rem 0; }
+    .flash { min-height: 1.3rem; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 0.85rem; color: var(--ok); margin: 0 0 0.75rem; }
+    .flash.err { color: var(--warn); }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.82em; }
+    pre.program {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.75rem;
+      background: #1c1917;
+      color: #f5f5f4;
+      padding: 0.85rem 1rem;
+      border-radius: 6px;
+      overflow-x: auto;
+      margin: 0.75rem 0 0;
+    }
+    .hidden-list { margin: 0; padding-left: 1.1rem; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 0.82rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="banner">Throwaway prototype — not the library</p>
+    <h1>Does this Client feel small enough?</h1>
+    <p class="lede">
+      Question: what is the smallest comfortable public Client for REST-only, Gateway-event,
+      HTTP-interaction, and sharded bots, while transport, sessions, buckets, and decoding stay hidden?
+      Click through a walkthrough or mash free-play. Watch the visible Client versus the hidden machinery.
+    </p>
+    <p class="flash" id="flash"></p>
+
+    <div class="grid">
+      <section class="card state" aria-live="polite">
+        <h2>Visible Client</h2>
+        <dl id="visible"></dl>
+        <pre class="program" id="program"></pre>
+      </section>
+      <section class="card state">
+        <h2>Hidden (must not leak)</h2>
+        <dl id="hidden"></dl>
+        <p class="hint" style="margin-top:0.85rem">If a bot needs any of this to compile, the Client got shallow.</p>
+        <ul class="hidden-list">
+          <li>opcodes, session id, sequence, resume URL, heartbeat ACK</li>
+          <li>tls / RFC 6455 / fetch / User-Agent / bucket maps</li>
+          <li>raw JSON before decode, numeric snowflakes, <code>any</code></li>
+        </ul>
+      </section>
+    </div>
+
+    <section class="card" style="margin-top:1.25rem">
+      <h2>Free play</h2>
+      <p class="hint">Every button is always available. Illegal sequences surface as configuration errors, not sockets.</p>
+      <div class="row">
+        <button type="button" data-act="constructRest">Construct (token only)</button>
+        <button type="button" data-act="constructGateway">Construct with intents</button>
+        <button type="button" data-act="constructShard">Construct recommended shards</button>
+        <button type="button" data-act="onMessage">on MESSAGE_CREATE</button>
+        <button type="button" data-act="onInteraction">on INTERACTION_CREATE</button>
+        <button type="button" data-act="restCreate">rest.createMessage</button>
+        <button type="button" data-act="restHatch">rest.execute hatch</button>
+        <button type="button" data-act="connect">connect()</button>
+        <button type="button" data-act="dispatch">Discord sends MESSAGE_CREATE</button>
+        <button type="button" data-act="http">handleInteractionRequest</button>
+        <button type="button" data-act="disconnect">disconnect()</button>
+        <button type="button" data-act="reset">Reset</button>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:1.25rem">
+      <h2>Walkthroughs</h2>
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" aria-selected="true" data-tab="rest">REST-only notice</button>
+        <button type="button" role="tab" aria-selected="false" data-tab="ping">Guild ping bot</button>
+        <button type="button" role="tab" aria-selected="false" data-tab="http">HTTP interaction</button>
+        <button type="button" role="tab" aria-selected="false" data-tab="shard">Recommended shards</button>
+        <button type="button" role="tab" aria-selected="false" data-tab="illegal">Illegal mix</button>
+      </div>
+      <div class="steps" id="walkthrough"></div>
+    </section>
+  </main>
+  <script>
+    (function () {
+      "use strict";
+
+      /** Portable Client module — no DOM. Lift-shaped for the later library. */
+      var GatewayIntent = { Guilds: 1, GuildMessages: 512, MessageContent: 32768 };
+
+      function emptyHidden() {
+        return {
+          sessionId: null,
+          sequence: null,
+          heartbeatAcked: null,
+          bucketRemaining: null,
+          userAgent: "DiscordBot (moon-discord, 0.0.0)",
+          lastDecode: null,
+          gatewaySessions: 0,
+          identified: false
+        };
+      }
+
+      function createClient(options) {
+        var token = options && options.token;
+        if (!token) {
+          return { ok: false, error: "ConfigError: token is required" };
+        }
+        return {
+          ok: true,
+          client: {
+            tokenSet: true,
+            intents: options.intents,
+            shards: options.shards || null,
+            handlers: {},
+            connected: false,
+            receiveMode: "none",
+            restCalls: 0,
+            lastEvent: null,
+            lastRest: null,
+            lastHttp: null,
+            userId: null,
+            error: null,
+            hidden: emptyHidden()
+          }
+        };
+      }
+
+      function on(client, t, _handler) {
+        if (!client) return { ok: false, error: "ConfigError: construct a Client first" };
+        client.handlers[t] = true;
+        client.error = null;
+        return { ok: true, client: client };
+      }
+
+      function restCreateMessage(client, channelId, body) {
+        if (!client) return { ok: false, error: "ConfigError: construct a Client first" };
+        client.restCalls += 1;
+        client.lastRest = "createMessage(" + channelId + ", { content: \"" + body.content + "\" })";
+        client.hidden.bucketRemaining = 4;
+        client.error = null;
+        return { ok: true, client: client, messageId: "111111111111111111" };
+      }
+
+      function restExecute(client) {
+        if (!client) return { ok: false, error: "ConfigError: construct a Client first" };
+        client.restCalls += 1;
+        client.lastRest = "execute({ method: \"GET\", path: \"/users/@me\" }) → unknown";
+        client.hidden.bucketRemaining = 3;
+        client.error = null;
+        return { ok: true, client: client };
+      }
+
+      function connect(client) {
+        if (!client) return { ok: false, error: "ConfigError: construct a Client first" };
+        if (client.receiveMode === "http") {
+          client.error = "ConfigError: Interactions Endpoint URL and Gateway INTERACTION_CREATE are mutually exclusive";
+          return { ok: false, error: client.error, client: client };
+        }
+        if (client.intents == null) {
+          client.error = "ConfigError: intents are required before connect()";
+          return { ok: false, error: client.error, client: client };
+        }
+        if (client.connected) {
+          client.error = "ConfigError: connect() is already running";
+          return { ok: false, error: client.error, client: client };
+        }
+        var n = client.shards === "recommended" ? 3 : 1;
+        client.connected = true;
+        client.receiveMode = "gateway";
+        client.userId = "222222222222222222";
+        client.hidden.sessionId = "sess_9f3a";
+        client.hidden.sequence = 1;
+        client.hidden.heartbeatAcked = true;
+        client.hidden.gatewaySessions = n;
+        client.hidden.identified = true;
+        client.hidden.lastDecode = "READY → owned Ready struct";
+        client.error = null;
+        return { ok: true, client: client };
+      }
+
+      function disconnect(client) {
+        if (!client) return { ok: false, error: "ConfigError: construct a Client first" };
+        client.connected = false;
+        client.receiveMode = client.receiveMode === "gateway" ? "none" : client.receiveMode;
+        client.hidden.sessionId = null;
+        client.hidden.sequence = null;
+        client.hidden.heartbeatAcked = null;
+        client.hidden.gatewaySessions = 0;
+        client.hidden.identified = false;
+        client.error = null;
+        return { ok: true, client: client };
+      }
+
+      function inboundMessage(client) {
+        if (!client) return { ok: false, error: "ConfigError: construct a Client first" };
+        if (!client.connected) {
+          client.error = "No Gateway session: MESSAGE_CREATE never arrives until connect()";
+          return { ok: false, error: client.error, client: client };
+        }
+        client.hidden.sequence = (client.hidden.sequence || 0) + 1;
+        client.hidden.lastDecode = "MESSAGE_CREATE → owned Message (snowflake strings)";
+        client.lastEvent = "MESSAGE_CREATE { channel_id: \"333…\", content: \"!ping\" }";
+        if (client.handlers.MESSAGE_CREATE) {
+          restCreateMessage(client, "333333333333333333", { content: "pong" });
+        }
+        client.error = null;
+        return { ok: true, client: client };
+      }
+
+      function handleInteractionRequest(client) {
+        if (!client) return { ok: false, error: "ConfigError: construct a Client first" };
+        if (client.receiveMode === "gateway") {
+          client.error = "ConfigError: Interactions Endpoint URL and Gateway INTERACTION_CREATE are mutually exclusive";
+          return { ok: false, error: client.error, client: client };
+        }
+        client.receiveMode = "http";
+        client.hidden.lastDecode = "unknown HTTP body → owned Interaction";
+        client.lastEvent = "INTERACTION_CREATE { id: \"444…\", token: \"…\" }";
+        client.lastHttp = "{ status: 200, json: callback or empty ack }";
+        if (client.handlers.INTERACTION_CREATE) {
+          client.restCalls += 1;
+          client.lastRest = "createInteractionResponse(id, token, { type: 4, data: { content: \"acked\" } })";
+        }
+        client.error = null;
+        return { ok: true, client: client };
+      }
+
+      function programText(client) {
+        if (!client) {
+          return "// no Client yet\n";
+        }
+        var lines = ["const client = new Client({", "  token,"];
+        if (client.intents != null) {
+          lines.push("  intents: Guilds | GuildMessages | MessageContent,");
+        }
+        if (client.shards === "recommended") {
+          lines.push("  shards: \"recommended\",");
+        }
+        lines.push("});");
+        if (client.handlers.MESSAGE_CREATE) {
+          lines.push("client.on(\"MESSAGE_CREATE\", handler);");
+        }
+        if (client.handlers.INTERACTION_CREATE) {
+          lines.push("client.on(\"INTERACTION_CREATE\", handler);");
+        }
+        if (client.lastRest && client.lastRest.indexOf("createMessage") === 0 && !client.connected && client.receiveMode !== "http") {
+          lines.push("await client.rest.createMessage(channelId, { content });");
+        }
+        if (client.connected) {
+          lines.push("await client.connect();");
+        }
+        if (client.receiveMode === "http") {
+          lines.push("await client.handleInteractionRequest({ body, headers });");
+        }
+        return lines.join("\n");
+      }
+
+      /* page shell */
+      var client = null;
+      var lastChanged = [];
+      var activeTab = "rest";
+      var stepIndex = 0;
+      var prevSnap = null;
+
+      var scenarios = {
+        rest: {
+          title: "REST-only notice",
+          blurb: "No intents, no connect. A deploy script should feel like one constructor and one Rest method.",
+          steps: [
+            { label: "Construct with token only", act: "constructRest" },
+            { label: "Send createMessage", act: "restCreate" }
+          ]
+        },
+        ping: {
+          title: "Guild ping bot",
+          blurb: "The common path: intents, one Dispatch handler, Rest from inside it, then connect. Session and heartbeat stay hidden.",
+          steps: [
+            { label: "Construct with intents", act: "constructGateway" },
+            { label: "Subscribe to MESSAGE_CREATE", act: "onMessage" },
+            { label: "connect()", act: "connect" },
+            { label: "Discord delivers !ping", act: "dispatch" }
+          ]
+        },
+        http: {
+          title: "HTTP interaction (no Gateway)",
+          blurb: "Caller owns the HTTP server. Client only handles the unknown body. Same INTERACTION_CREATE name as Gateway.",
+          steps: [
+            { label: "Construct with token only", act: "constructRest" },
+            { label: "Subscribe to INTERACTION_CREATE", act: "onInteraction" },
+            { label: "handleInteractionRequest", act: "http" }
+          ]
+        },
+        shard: {
+          title: "Recommended shards",
+          blurb: "Still one Client. Three sessions appear only in the hidden panel. Buckets stay process-global.",
+          steps: [
+            { label: "Construct with recommended shards", act: "constructShard" },
+            { label: "Subscribe to MESSAGE_CREATE", act: "onMessage" },
+            { label: "connect() — library Identifies all recommended shards", act: "connect" }
+          ]
+        },
+        illegal: {
+          title: "Illegal mix",
+          blurb: "Discord forbids Gateway INTERACTION_CREATE plus the Interactions Endpoint URL. The Client must fail at configuration, not after a mystery close code.",
+          steps: [
+            { label: "Construct with intents", act: "constructGateway" },
+            { label: "connect() to Gateway", act: "connect" },
+            { label: "Then handleInteractionRequest (should fail)", act: "http" }
+          ]
+        }
+      };
+
+      function snapshot(c) {
+        if (!c) return { constructed: "no" };
+        return {
+          constructed: "yes",
+          intents: c.intents == null ? "omitted" : String(c.intents),
+          shards: c.shards ? String(c.shards) : "omitted",
+          handlers: Object.keys(c.handlers).join(", ") || "(none)",
+          connected: c.connected ? "yes" : "no",
+          receiveMode: c.receiveMode,
+          restCalls: String(c.restCalls),
+          lastEvent: c.lastEvent || "—",
+          lastRest: c.lastRest || "—",
+          lastHttp: c.lastHttp || "—",
+          userId: c.userId || "—",
+          error: c.error || "—"
+        };
+      }
+
+      function hiddenSnap(c) {
+        if (!c) {
+          return {
+            sessionId: "—",
+            sequence: "—",
+            heartbeatAcked: "—",
+            gatewaySessions: "—",
+            identified: "—",
+            bucketRemaining: "—",
+            lastDecode: "—"
+          };
+        }
+        var h = c.hidden;
+        return {
+          sessionId: h.sessionId || "—",
+          sequence: h.sequence == null ? "—" : String(h.sequence),
+          heartbeatAcked: h.heartbeatAcked == null ? "—" : String(h.heartbeatAcked),
+          gatewaySessions: String(h.gatewaySessions),
+          identified: String(h.identified),
+          bucketRemaining: h.bucketRemaining == null ? "—" : String(h.bucketRemaining),
+          lastDecode: h.lastDecode || "—"
+        };
+      }
+
+      function renderDl(el, data, changedKeys) {
+        el.innerHTML = "";
+        Object.keys(data).forEach(function (key) {
+          var dt = document.createElement("dt");
+          dt.textContent = key;
+          var dd = document.createElement("dd");
+          dd.textContent = data[key];
+          if (changedKeys.indexOf(key) !== -1) dd.className = "changed";
+          el.appendChild(dt);
+          el.appendChild(dd);
+        });
+      }
+
+      function diffKeys(prev, next) {
+        if (!prev) return [];
+        var keys = [];
+        Object.keys(next).forEach(function (k) {
+          if (prev[k] !== next[k]) keys.push(k);
+        });
+        return keys;
+      }
+
+      function setFlash(ok, text) {
+        var el = document.getElementById("flash");
+        el.className = "flash" + (ok ? "" : " err");
+        el.textContent = text || "";
+      }
+
+      function render() {
+        var vis = snapshot(client);
+        var hid = hiddenSnap(client);
+        var visChanged = lastChanged.filter(function (k) { return vis[k] !== undefined; });
+        renderDl(document.getElementById("visible"), vis, visChanged);
+        renderDl(document.getElementById("hidden"), hid, lastChanged);
+        document.getElementById("program").textContent = programText(client);
+        renderWalkthrough();
+      }
+
+      function renderWalkthrough() {
+        var sc = scenarios[activeTab];
+        var root = document.getElementById("walkthrough");
+        var html = "<p class=\"hint\"><strong>" + sc.title + ".</strong> " + sc.blurb + "</p><ol>";
+        sc.steps.forEach(function (step, i) {
+          var done = i < stepIndex;
+          var current = i === stepIndex;
+          html += "<li>" + step.label + " ";
+          if (current) {
+            html += "<button type=\"button\" class=\"primary\" data-step-act=\"" + step.act + "\">Do this step</button>";
+          } else if (done) {
+            html += " — done";
+          }
+          html += "</li>";
+        });
+        html += "</ol>";
+        if (stepIndex >= sc.steps.length) {
+          html += "<p class=\"hint\">Walkthrough complete. Reset or switch tabs.</p>";
+        }
+        root.innerHTML = html;
+      }
+
+      function applyAct(act, fromWalk) {
+        var beforeV = snapshot(client);
+        var beforeH = hiddenSnap(client);
+        var result;
+        if (act === "reset") {
+          client = null;
+          stepIndex = 0;
+          result = { ok: true };
+        } else if (act === "constructRest") {
+          result = createClient({ token: "Bot.token" });
+          if (result.ok) client = result.client;
+        } else if (act === "constructGateway") {
+          result = createClient({
+            token: "Bot.token",
+            intents: GatewayIntent.Guilds | GatewayIntent.GuildMessages | GatewayIntent.MessageContent
+          });
+          if (result.ok) client = result.client;
+        } else if (act === "constructShard") {
+          result = createClient({
+            token: "Bot.token",
+            intents: GatewayIntent.Guilds | GatewayIntent.GuildMessages,
+            shards: "recommended"
+          });
+          if (result.ok) client = result.client;
+        } else if (act === "onMessage") {
+          result = on(client, "MESSAGE_CREATE", function () {});
+          if (result.client) client = result.client;
+        } else if (act === "onInteraction") {
+          result = on(client, "INTERACTION_CREATE", function () {});
+          if (result.client) client = result.client;
+        } else if (act === "restCreate") {
+          result = restCreateMessage(client, "333333333333333333", { content: "deploy note" });
+          if (result.client) client = result.client;
+        } else if (act === "restHatch") {
+          result = restExecute(client);
+          if (result.client) client = result.client;
+        } else if (act === "connect") {
+          result = connect(client);
+          if (result.client) client = result.client;
+        } else if (act === "dispatch") {
+          result = inboundMessage(client);
+          if (result.client) client = result.client;
+        } else if (act === "http") {
+          result = handleInteractionRequest(client);
+          if (result.client) client = result.client;
+        } else if (act === "disconnect") {
+          result = disconnect(client);
+          if (result.client) client = result.client;
+        } else {
+          result = { ok: false, error: "Unknown action" };
+        }
+
+        var afterV = snapshot(client);
+        var afterH = hiddenSnap(client);
+        lastChanged = diffKeys(beforeV, afterV).concat(diffKeys(beforeH, afterH));
+        if (result.ok) {
+          setFlash(true, fromWalk ? "Step applied. Highlighted fields just changed." : "Applied. Highlighted fields just changed.");
+          if (fromWalk) stepIndex += 1;
+        } else {
+          setFlash(false, result.error || "Failed");
+          if (fromWalk) stepIndex += 1;
+        }
+        prevSnap = afterV;
+        render();
+      }
+
+      document.querySelectorAll("[data-act]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          applyAct(btn.getAttribute("data-act"), false);
+        });
+      });
+
+      document.querySelectorAll("[data-tab]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          activeTab = btn.getAttribute("data-tab");
+          stepIndex = 0;
+          client = null;
+          lastChanged = [];
+          setFlash(true, "Walkthrough reset to a known start.");
+          document.querySelectorAll("[data-tab]").forEach(function (b) {
+            b.setAttribute("aria-selected", b === btn ? "true" : "false");
+          });
+          render();
+        });
+      });
+
+      document.getElementById("walkthrough").addEventListener("click", function (ev) {
+        var t = ev.target;
+        if (t && t.getAttribute && t.getAttribute("data-step-act")) {
+          applyAct(t.getAttribute("data-step-act"), true);
+        }
+      });
+
+      render();
+    })();
+  </script>
+</body>
+</html>
