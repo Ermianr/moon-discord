@@ -16,5 +16,20 @@
     "entry": "benches/rest-dispatch/main.ts",
     "baseline": "benches/rest-dispatch/baseline.json",
     "paths": ["src/rest/", "benches/rest-dispatch/", "benches/lib/", "fixtures/rest-dispatch/", "scripts/hot-path-gate.ts"]
+  },
+  "heartbeat": {
+    "scenario": "heartbeat",
+    "compiler": "0.0.36",
+    "lane": "default-gateway",
+    "entry": "benches/heartbeat/main.ts",
+    "baseline": "benches/heartbeat/baseline.json",
+    "paths": [
+      "src/session.ts",
+      "src/session/",
+      "benches/heartbeat/",
+      "benches/lib/",
+      "fixtures/heartbeat/",
+      "scripts/hot-path-gate.ts"
+    ]
   }
 }

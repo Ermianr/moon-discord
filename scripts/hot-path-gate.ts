@@ -14,7 +14,7 @@ type Filter = {
   scenario: string;
   compiler: string;
   lane: string;
-  backend: string;
+  backend?: string;
   entry: string;
   baseline: string;
   paths: string[];
@@ -25,9 +25,31 @@ type ProcessReport = {
   p95Us: number;
 };
 
-function changedFiles(): string[] {
+function allFilterPaths(filters: Record<string, Filter>): string[] {
+  const files: string[] = [];
+  const names = Object.keys(filters);
+  for (let i = 0; i < names.length; i += 1) {
+    const name = names[i];
+    if (name === undefined) {
+      continue;
+    }
+    const filter = filters[name];
+    if (filter === undefined) {
+      continue;
+    }
+    for (let j = 0; j < filter.paths.length; j += 1) {
+      const prefix = filter.paths[j];
+      if (prefix !== undefined) {
+        files.push(prefix);
+      }
+    }
+  }
+  return files;
+}
+
+function changedFiles(filters: Record<string, Filter>): string[] {
   if (process.env.HOT_PATH_ALL === "1") {
-    return ["src/decode/", "src/rest/", "benches/decode/", "benches/rest-dispatch/"];
+    return allFilterPaths(filters);
   }
   const base = process.env.HOT_PATH_BASE;
   const head = process.env.HOT_PATH_HEAD;
@@ -91,8 +113,11 @@ function readBaseline(filePath: string): Baseline | undefined {
   return { medianUs, p95Us };
 }
 
-function buildElf(entry: string, backend: string, output: string): void {
-  const args = ["build", entry, "--backend", backend, "-o", output];
+function buildElf(entry: string, backend: string | undefined, output: string): void {
+  const args = ["build", entry, "-o", output];
+  if (backend !== undefined && backend !== "") {
+    args.push("--backend", backend);
+  }
   if (args.includes("--dynamic")) {
     throw new Error("hot-path benches must not pass --dynamic");
   }
@@ -173,14 +198,18 @@ function runScenario(filter: Filter): void {
   process.exit(1);
 }
 
-const filters = JSON.parse(fs.readFileSync(path.join(repoRoot, "benches/path-filters.json"), "utf8")) as {
-  decode: Filter;
-  "rest-dispatch": Filter;
-};
-const files = changedFiles();
-const scenarios: Filter[] = [filters.decode, filters["rest-dispatch"]];
-for (let i = 0; i < scenarios.length; i += 1) {
-  const filter = scenarios[i];
+const filters = JSON.parse(fs.readFileSync(path.join(repoRoot, "benches/path-filters.json"), "utf8")) as Record<
+  string,
+  Filter
+>;
+const files = changedFiles(filters);
+const names = Object.keys(filters);
+for (let i = 0; i < names.length; i += 1) {
+  const name = names[i];
+  if (name === undefined) {
+    continue;
+  }
+  const filter = filters[name];
   if (filter === undefined) {
     continue;
   }

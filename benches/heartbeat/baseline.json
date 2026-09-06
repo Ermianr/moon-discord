@@ -1,0 +1,8 @@
+{
+  "scenario": "heartbeat",
+  "compiler": "0.0.36",
+  "lane": "default-gateway",
+  "platform": "linux-x86_64-glibc",
+  "medianUs": 0.17715235662763007,
+  "p95Us": 0.2690458823053632
+}
