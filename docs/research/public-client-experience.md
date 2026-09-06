@@ -39,8 +39,9 @@ const http = await client.handleInteractionRequest({
 | `token` | always | Bot token. Library sets `Authorization: Bot …`. |
 | `intents` | before `connect()` | Named `GatewayIntent` flags, OR’d into one number. Illegal as `1 << n` at bot sites. |
 | `shards` | no | Omit: one Identify without a shard tuple unless Discord requires shards. `"recommended"`: Get Gateway Bot, own every shard in this process, honor `max_concurrency`. `{ id, count }`: Identify `shard: [id, count]` for this process. |
+| `cache` | no | Omit or `false`: `client.cache` is `undefined`. `true` or a kind object: in-memory **Cache snapshot** maps after **Decode**. Not an injected adapter. Detail: [Choose the optional cache boundary](https://github.com/Ermianr/moon-discord/issues/11). |
 
-API version is not configurable (REST `/api/v10`, Gateway `?v=10&encoding=json`). Cache is not an option.
+API version is not configurable (REST `/api/v10`, Gateway `?v=10&encoding=json`).
 
 ### Lifecycle and dispatch
 
@@ -76,7 +77,7 @@ Not a `ShardManager` module. One Client, one token, process-global **Bucket**s, 
 
 ### What stays hidden
 
-Session id, sequence `s`, opcodes, resume URL, heartbeat, RFC 6455, `tls`, `fetch`, zlib, ETF, **Bucket** maps, `X-RateLimit-*`, User-Agent construction, Decode of extra JSON fields, `any`, injected transports, mandatory cache, Voice protocol, user tokens.
+Session id, sequence `s`, opcodes, resume URL, heartbeat, RFC 6455, `tls`, `fetch`, zlib, ETF, **Bucket** maps, `X-RateLimit-*`, User-Agent construction, Decode of extra JSON fields, `any`, injected transports, mandatory cache, Voice protocol, user tokens. Opt-in `client.cache` is snapshots only ([Choose the optional cache boundary](https://github.com/Ermianr/moon-discord/issues/11)).
 
 ### Representative programs
 

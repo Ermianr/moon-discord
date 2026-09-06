@@ -76,6 +76,14 @@ _Avoid_: ShardManager, worker, public shardId on Dispatch handlers
 An application-triggered Gateway opcode on Client (presence, voice state, request members, soundboard sounds, channel info), not heartbeat, Identify, or Resume.
 _Avoid_: opcode hatch, nested gateway session object
 
+**Cache**:
+An optional Client-owned map from Snowflake to the last inbound snapshot of a Discord resource. Off by default; lookup does not fetch.
+_Avoid_: Collection, manager, mandatory store, live Guild or Message class
+
+**Cache snapshot**:
+The inbound model stored for a Snowflake (or guild plus user for a member), replaced by a full Decode or patched in place. Partial events do not invent a resource that was never stored.
+_Avoid_: hydrated entity, kitchen-sink optional resource
+
 **Hot path**:
 The three library work units whose latency is gated: copy-Decode, Session heartbeat emit to the Gateway connection, and Rest dispatch to the HTTP adapter.
 _Avoid_: treating cache, TLS, RFC 6455, JSON.parse, or Discord's heartbeat interval as the gated work

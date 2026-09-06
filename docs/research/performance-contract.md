@@ -26,7 +26,7 @@ Gating benches live in the repo, import those deep modules the same way in-repo 
 
 **Client** is not the gating seam. A non-gating smoke may pump one `MESSAGE_CREATE` through `createTestClient` to `on("MESSAGE_CREATE")` with **no** budget. Ticket 13 decides whether CI runs that smoke.
 
-Cache stays off (today’s no-op collaborator; later, still off for these benches) so optional cache cannot enter the budget ([Choose the optional cache boundary](https://github.com/Ermianr/moon-discord/issues/11)).
+Cache stays off in gated runs (constructor default; benches must not pass `cache: true`) so optional **Cache** cannot enter the budget ([Choose the optional cache boundary](https://github.com/Ermianr/moon-discord/issues/11)).
 
 ## Decode datasets
 
