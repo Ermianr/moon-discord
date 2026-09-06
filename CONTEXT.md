@@ -33,7 +33,7 @@ The closed library-owned structure Decode produces for a Discord resource or dis
 _Avoid_: raw JSON object, parsed payload, sharing this type with Rest request bodies
 
 **Outbound model**:
-The closed structure a caller builds for a typed Rest body or query. Absent optional keys are omitted; JSON `null` is only for documented clears.
+The closed structure a caller builds for a typed Rest body or query, or for a Gateway send. Absent optional keys are omitted; JSON `null` is only for documented clears.
 _Avoid_: reusing the inbound model, sending `undefined`
 
 **Bucket**:
@@ -59,3 +59,19 @@ _Avoid_: dropping the event, treating unknown `t` as a session failure, calling 
 **Intents**:
 Named Gateway Identify flags combined with bitwise OR.
 _Avoid_: raw bit shifts at application sites
+
+**Session**:
+Hidden Gateway handshake and heartbeat state for one shard connection (Hello through Ready or Resume), over text JSON.
+_Avoid_: exposing the socket, connection manager, ShardManager, treating RFC 6455 as the Session
+
+**Gateway transport**:
+RFC 6455 over TLS that turns a Discord Gateway URL into text JSON for a Session.
+_Avoid_: npm `ws`, built-in `WebSocket`, exposing `tls.connect` on Client
+
+**Shard**:
+One Session identified to Discord as Identify `shard: [id, count]`.
+_Avoid_: ShardManager, worker, public shardId on Dispatch handlers
+
+**Gateway send**:
+An application-triggered Gateway opcode on Client (presence, voice state, request members, soundboard sounds, channel info), not heartbeat, Identify, or Resume.
+_Avoid_: opcode hatch, nested gateway session object
