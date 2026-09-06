@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Optional cache boundary — throwaway prototype</title>
+  <style>
+    :root {
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #e7e5e4;
+      --paper: #fafaf9;
+      --panel: #ffffff;
+      --accent: #0f766e;
+      --accent-soft: #ccfbf1;
+      --warn: #9a3412;
+      --warn-soft: #ffedd5;
+      --ok: #166534;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      color: var(--ink);
+      background: var(--paper);
+      line-height: 1.45;
+    }
+    main { max-width: 1100px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+    h1 { font-size: 1.75rem; font-weight: 600; margin: 0 0 0.5rem; letter-spacing: -0.02em; }
+    .lede { color: var(--muted); margin: 0 0 1.75rem; max-width: 48rem; }
+    .banner {
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-size: 0.75rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--warn);
+      background: var(--warn-soft);
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      margin-bottom: 1rem;
+    }
+    h2 { font-size: 1.05rem; margin: 0 0 0.75rem; }
+    button {
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-size: 0.85rem;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      color: var(--ink);
+      padding: 0.45rem 0.7rem;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover { border-color: var(--accent); }
+    button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .grid { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 1.25rem; }
+    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 1rem 1.1rem 1.15rem;
+    }
+    .state dl { margin: 0; display: grid; grid-template-columns: 8.5rem 1fr; gap: 0.35rem 0.75rem; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 0.85rem; }
+    .state dt { color: var(--muted); font-weight: 500; }
+    .state dd { margin: 0; }
+    .changed { background: var(--accent-soft); box-shadow: inset 0 0 0 1px #5eead4; }
+    .row { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.5rem; }
+    .hint { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 0.8rem; color: var(--muted); margin: 0 0 0.65rem; }
+    .tabs { display: flex; gap: 0.25rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+    .tabs button[aria-selected="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .steps { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 0.85rem; }
+    .steps ol { margin: 0.5rem 0 0; padding-left: 1.2rem; }
+    .steps li { margin: 0.35rem 0; }
+    .flash { min-height: 1.3rem; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 0.85rem; color: var(--ok); margin: 0 0 0.75rem; }
+    .flash.err { color: var(--warn); }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.82em; }
+    .entity {
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-size: 0.8rem;
+      border-top: 1px solid var(--line);
+      padding: 0.45rem 0;
+    }
+    .entity:first-child { border-top: none; }
+    .tag {
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--warn);
+      margin-left: 0.35rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="banner">Throwaway prototype — not the library</p>
+    <h1>Does this optional cache stay a lookup, not a second Discord?</h1>
+    <p class="lede">
+      Question: what optional cache gives useful identity lookup (same snowflake, last snapshot)
+      without making Client, Decode, Rest, or interactions depend on a live in-memory Discord model?
+      Handlers always receive the decoded payload. Cache is an extra map the Client may fill
+      after Decode. It never auto-fetches, never grows <code>.reply()</code> methods, and is off by default.
+    </p>
+    <p class="flash" id="flash"></p>
+
+    <div class="grid">
+      <section class="card state" aria-live="polite">
+        <h2>Visible Client</h2>
+        <dl id="visible"></dl>
+        <h2 style="margin-top:1rem">Cache snapshots</h2>
+        <div id="snapshots"></div>
+      </section>
+      <section class="card state">
+        <h2>Must stay uncoupled</h2>
+        <dl id="hidden"></dl>
+        <p class="hint" style="margin-top:0.85rem">
+          Decode, Session, Rest buckets, and interaction verify do not import this map.
+          A miss does not become a Rest GET. Unknown dispatch and the Rest hatch do not write snapshots.
+        </p>
+      </section>
+    </div>
+
+    <section class="card" style="margin-top:1.25rem">
+      <h2>Free play</h2>
+      <p class="hint">Any order. Each click is one action on the Client collaborator.</p>
+      <div class="row">
+        <button data-act="enableCache">Turn cache on</button>
+        <button data-act="disableCache">Turn cache off</button>
+        <button data-act="enableMessages">Allow message snapshots</button>
+      </div>
+      <div class="row">
+        <button data-act="connect">Connect (READY + guild)</button>
+        <button data-act="guildUpdate">Guild name update</button>
+        <button data-act="partialUpdateNoGuild">Partial update, unknown guild</button>
+        <button data-act="messageCreate">Message create</button>
+        <button data-act="unavailable">Guild unavailable</button>
+        <button data-act="guildDelete">Guild deleted</button>
+        <button data-act="disconnect">Disconnect</button>
+      </div>
+      <div class="row">
+        <button data-act="restGetUser">Rest GET user</button>
+        <button data-act="restHatch">Rest hatch (unknown body)</button>
+        <button data-act="interactionHttp">HTTP interaction (no Gateway)</button>
+        <button data-act="unknownDispatch">Unknown dispatch t</button>
+        <button data-act="lookupGuild">Look up guild</button>
+        <button data-act="lookupUser">Look up user</button>
+        <button data-act="lookupMiss">Look up missing id</button>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:1.25rem">
+      <h2>Guided walkthroughs</h2>
+      <div class="tabs" role="tablist" id="tabs"></div>
+      <div class="steps" id="walk"></div>
+    </section>
+  </main>
+  <script>
+(function () {
+  "use strict";
+
+  // --- portable module (no DOM) ---
+
+  var GUILD = "100";
+  var USER = "200";
+  var CHANNEL = "300";
+  var OTHER_USER = "201";
+  var MISSING = "999";
+
+  function emptyMaps() {
+    return {
+      guilds: {},
+      users: {},
+      channels: {},
+      members: {},
+      messages: {}
+    };
+  }
+
+  function cloneMaps(maps) {
+    return JSON.parse(JSON.stringify(maps));
+  }
+
+  function initialState() {
+    return {
+      cacheOn: false,
+      messagesOn: false,
+      connected: false,
+      receive: "none",
+      maps: emptyMaps(),
+      lastHandler: "none",
+      lastLookup: "none",
+      lastWrite: "none",
+      skipped: "none",
+      autoFetch: false,
+      changed: []
+    };
+  }
+
+  function memberKey(guildId, userId) {
+    return guildId + ":" + userId;
+  }
+
+  function remember(state, kind, id, snapshot, mode) {
+    if (!state.cacheOn) {
+      state.skipped = "cache off — handler still ran";
+      return;
+    }
+    if (kind === "messages" && !state.messagesOn) {
+      state.skipped = "message snapshots off (default)";
+      return;
+    }
+    var table = state.maps[kind];
+    if (mode === "patch") {
+      var prev = table[id];
+      if (!prev) {
+        state.skipped = "partial " + kind + " ignored (no snapshot yet)";
+        return;
+      }
+      var next = {};
+      for (var k in prev) next[k] = prev[k];
+      for (var p in snapshot) {
+        if (snapshot[p] !== undefined) next[p] = snapshot[p];
+      }
+      table[id] = next;
+      state.lastWrite = "patched " + kind + " " + id;
+      state.changed.push(kind + ":" + id);
+      return;
+    }
+    table[id] = snapshot;
+    state.lastWrite = "stored " + kind + " " + id;
+    state.changed.push(kind + ":" + id);
+  }
+
+  function lookup(state, kind, id) {
+    if (!state.cacheOn) {
+      state.lastLookup = "no cache on this Client";
+      state.autoFetch = false;
+      return;
+    }
+    var hit = state.maps[kind][id];
+    if (!hit) {
+      state.lastLookup = "miss " + kind + " " + id + " — Rest was not called";
+      state.autoFetch = false;
+      return;
+    }
+    state.lastLookup = kind + " " + id + " → " + (hit.name || hit.username || hit.content || "snapshot");
+    state.autoFetch = false;
+  }
+
+  function reduce(state, action) {
+    var next = {
+      cacheOn: state.cacheOn,
+      messagesOn: state.messagesOn,
+      connected: state.connected,
+      receive: state.receive,
+      maps: cloneMaps(state.maps),
+      lastHandler: state.lastHandler,
+      lastLookup: state.lastLookup,
+      lastWrite: "none",
+      skipped: "none",
+      autoFetch: false,
+      changed: []
+    };
+
+    switch (action) {
+      case "enableCache":
+        next.cacheOn = true;
+        next.lastWrite = "cache policy: memory";
+        break;
+      case "disableCache":
+        next.cacheOn = false;
+        next.maps = emptyMaps();
+        next.lastWrite = "cache policy: off (maps dropped)";
+        break;
+      case "enableMessages":
+        next.messagesOn = true;
+        next.lastWrite = "message snapshots allowed";
+        break;
+      case "connect":
+        next.connected = true;
+        next.receive = "gateway";
+        next.lastHandler = "READY, then GUILD_CREATE";
+        remember(next, "users", USER, { id: USER, username: "moon-bot" }, "replace");
+        remember(next, "guilds", GUILD, { id: GUILD, name: "Moon", unavailable: false }, "replace");
+        remember(next, "channels", CHANNEL, { id: CHANNEL, guild_id: GUILD, name: "general" }, "replace");
+        remember(next, "members", memberKey(GUILD, USER), { guild_id: GUILD, user_id: USER, nick: "bot" }, "replace");
+        break;
+      case "guildUpdate":
+        next.lastHandler = "GUILD_UPDATE";
+        remember(next, "guilds", GUILD, { name: "Moon Reloaded" }, "patch");
+        break;
+      case "partialUpdateNoGuild":
+        next.lastHandler = "GUILD_UPDATE";
+        remember(next, "guilds", "404", { name: "Ghost" }, "patch");
+        break;
+      case "messageCreate":
+        next.lastHandler = "MESSAGE_CREATE";
+        remember(next, "messages", CHANNEL + ":1", { id: "1", channel_id: CHANNEL, content: "hi" }, "replace");
+        remember(next, "users", OTHER_USER, { id: OTHER_USER, username: "ada" }, "replace");
+        break;
+      case "unavailable":
+        next.lastHandler = "GUILD_DELETE (unavailable)";
+        remember(next, "guilds", GUILD, { unavailable: true }, "patch");
+        break;
+      case "guildDelete":
+        next.lastHandler = "GUILD_DELETE";
+        if (next.cacheOn && next.maps.guilds[GUILD]) {
+          delete next.maps.guilds[GUILD];
+          delete next.maps.channels[CHANNEL];
+          delete next.maps.members[memberKey(GUILD, USER)];
+          next.lastWrite = "dropped guild and nested snapshots";
+          next.changed.push("guilds:" + GUILD);
+        } else if (!next.cacheOn) {
+          next.skipped = "cache off — handler still ran";
+        } else {
+          next.skipped = "guild was not cached";
+        }
+        break;
+      case "disconnect":
+        next.connected = false;
+        next.receive = "none";
+        next.lastHandler = "disconnect (cache kept)";
+        next.lastWrite = next.cacheOn ? "maps unchanged" : "cache still off";
+        break;
+      case "restGetUser":
+        next.lastHandler = "Rest GET /users/" + OTHER_USER;
+        remember(next, "users", OTHER_USER, { id: OTHER_USER, username: "ada-rest" }, "replace");
+        break;
+      case "restHatch":
+        next.lastHandler = "Rest hatch";
+        next.skipped = "hatch body is unknown — no snapshot";
+        break;
+      case "interactionHttp":
+        next.receive = "http";
+        next.lastHandler = "INTERACTION_CREATE via handleInteractionRequest";
+        remember(next, "users", OTHER_USER, { id: OTHER_USER, username: "slash-user" }, "replace");
+        remember(next, "guilds", GUILD, { id: GUILD, name: "From interaction", unavailable: false }, "replace");
+        break;
+      case "unknownDispatch":
+        next.lastHandler = "onUnknownDispatch";
+        next.skipped = "unknown t — no inbound model, no snapshot";
+        break;
+      case "lookupGuild":
+        lookup(next, "guilds", GUILD);
+        break;
+      case "lookupUser":
+        lookup(next, "users", OTHER_USER);
+        break;
+      case "lookupMiss":
+        lookup(next, "guilds", MISSING);
+        break;
+      default:
+        break;
+    }
+    return next;
+  }
+
+  // --- page shell ---
+
+  var state = initialState();
+  var flashEl = document.getElementById("flash");
+  var visibleEl = document.getElementById("visible");
+  var hiddenEl = document.getElementById("hidden");
+  var snapshotsEl = document.getElementById("snapshots");
+  var walkEl = document.getElementById("walk");
+  var tabsEl = document.getElementById("tabs");
+  var walkIndex = 0;
+  var activeWalk = 0;
+  var prevMaps = emptyMaps();
+
+  var walks = [
+    {
+      title: "Ping bot, cache off",
+      blurb: "Default Client. A message handler runs. Lookup has nothing to offer. Rest is unused. This must stay the 20-line bot.",
+      steps: [
+        { act: "messageCreate", label: "Gateway delivers MESSAGE_CREATE" },
+        { act: "lookupGuild", label: "Application asks for a guild snapshot" }
+      ]
+    },
+    {
+      title: "Identity lookup",
+      blurb: "Turn cache on, connect, then look up the same guild snowflake after a name patch. You get a snapshot, not a Guild class.",
+      steps: [
+        { act: "enableCache", label: "Construct with cache: true" },
+        { act: "connect", label: "connect() → READY and GUILD_CREATE" },
+        { act: "guildUpdate", label: "GUILD_UPDATE patches the name" },
+        { act: "lookupGuild", label: "client.cache.guild(id)" }
+      ]
+    },
+    {
+      title: "Partial without a snapshot",
+      blurb: "An update for a guild we never stored is dropped. Cache does not invent a kitchen-sink guild from leftovers.",
+      steps: [
+        { act: "enableCache", label: "Turn cache on" },
+        { act: "partialUpdateNoGuild", label: "GUILD_UPDATE for an unseen id" },
+        { act: "lookupGuild", label: "Look up the real guild (still empty)" }
+      ]
+    },
+    {
+      title: "Rest writes; hatch does not",
+      blurb: "Typed Rest Decode fills the same maps. The hatch returns unknown, so it cannot write. Decode still does not import cache.",
+      steps: [
+        { act: "enableCache", label: "Turn cache on" },
+        { act: "restGetUser", label: "Typed Rest GET user" },
+        { act: "lookupUser", label: "Look up that user" },
+        { act: "restHatch", label: "Rest hatch with an unknown body" }
+      ]
+    },
+    {
+      title: "HTTP ingest, no Session",
+      blurb: "handleInteractionRequest Decodes INTERACTION_CREATE. Nested user/guild may be remembered. No Gateway, no Rest auto-get.",
+      steps: [
+        { act: "enableCache", label: "Turn cache on" },
+        { act: "interactionHttp", label: "Caller server posts an interaction" },
+        { act: "lookupUser", label: "Look up the interacting user" }
+      ]
+    },
+    {
+      title: "Miss does not fetch",
+      blurb: "The illegal manager design would GET on miss and couple Rest to cache. This model returns undefined and stops.",
+      steps: [
+        { act: "enableCache", label: "Turn cache on" },
+        { act: "connect", label: "Connect so some ids exist" },
+        { act: "lookupMiss", label: "Look up an id Discord never sent" }
+      ]
+    },
+    {
+      title: "Unavailable vs delete vs disconnect",
+      blurb: "Unavailable keeps the guild marked. A real delete drops nested snapshots. Disconnect keeps maps: cache is process memory, not the Session.",
+      steps: [
+        { act: "enableCache", label: "Turn cache on" },
+        { act: "connect", label: "Connect" },
+        { act: "unavailable", label: "Guild becomes unavailable" },
+        { act: "disconnect", label: "disconnect() — maps remain" },
+        { act: "lookupGuild", label: "Look up the unavailable guild" },
+        { act: "connect", label: "connect() again" },
+        { act: "guildDelete", label: "Guild actually deleted" },
+        { act: "lookupGuild", label: "Look up — miss, still no Rest" }
+      ]
+    },
+    {
+      title: "Messages stay off",
+      blurb: "Hot-path MESSAGE_CREATE must not fill an unbounded map by default. The handler still runs.",
+      steps: [
+        { act: "enableCache", label: "Turn cache on (messages still off)" },
+        { act: "connect", label: "Connect" },
+        { act: "messageCreate", label: "MESSAGE_CREATE — user may store, message must not" }
+      ]
+    }
+  ];
+
+  function flash(text, err) {
+    flashEl.textContent = text;
+    flashEl.className = "flash" + (err ? " err" : "");
+  }
+
+  function dd(dl, key, value, mark) {
+    var dt = document.createElement("dt");
+    dt.textContent = key;
+    var d = document.createElement("dd");
+    d.textContent = value;
+    if (mark) d.className = "changed";
+    dl.appendChild(dt);
+    dl.appendChild(d);
+  }
+
+  function renderEntities(kind, table) {
+    var ids = Object.keys(table);
+    if (ids.length === 0) return;
+    ids.forEach(function (id) {
+      var row = document.createElement("div");
+      row.className = "entity";
+      if (state.changed.indexOf(kind + ":" + id) !== -1) row.className += " changed";
+      var snap = table[id];
+      var label = snap.name || snap.username || snap.content || snap.nick || id;
+      row.textContent = kind + " " + id + " — " + label;
+      if (snap.unavailable) {
+        var tag = document.createElement("span");
+        tag.className = "tag";
+        tag.textContent = "unavailable";
+        row.appendChild(tag);
+      }
+      snapshotsEl.appendChild(row);
+    });
+  }
+
+  function render() {
+    visibleEl.innerHTML = "";
+    dd(visibleEl, "cache", state.cacheOn ? "on (memory snapshots)" : "off (default)", false);
+    dd(visibleEl, "message snapshots", state.messagesOn ? "on" : "off", false);
+    dd(visibleEl, "connected", state.connected ? "yes" : "no", false);
+    dd(visibleEl, "receive mode", state.receive, false);
+    dd(visibleEl, "handler payload", state.lastHandler, true);
+    dd(visibleEl, "last lookup", state.lastLookup, true);
+    dd(visibleEl, "client.cache", state.cacheOn ? "guild / user / channel / member / message" : "undefined", false);
+
+    hiddenEl.innerHTML = "";
+    dd(hiddenEl, "last write", state.lastWrite, true);
+    dd(hiddenEl, "skipped", state.skipped, state.skipped !== "none");
+    dd(hiddenEl, "auto Rest on miss", state.autoFetch ? "YES — bug" : "no", false);
+    dd(hiddenEl, "Session / Decode / Rest", "do not hold these maps", false);
+    dd(hiddenEl, "live Guild/Message class", "not created", false);
+
+    snapshotsEl.innerHTML = "";
+    if (!state.cacheOn) {
+      var p = document.createElement("p");
+      p.className = "hint";
+      p.textContent = "No maps. The Client is still useful.";
+      snapshotsEl.appendChild(p);
+    } else {
+      var any = false;
+      ["guilds", "users", "channels", "members", "messages"].forEach(function (kind) {
+        if (Object.keys(state.maps[kind]).length) any = true;
+        renderEntities(kind, state.maps[kind]);
+      });
+      if (!any) {
+        var empty = document.createElement("p");
+        empty.className = "hint";
+        empty.textContent = "Maps exist but are empty.";
+        snapshotsEl.appendChild(empty);
+      }
+    }
+    prevMaps = cloneMaps(state.maps);
+  }
+
+  function dispatch(act, fromWalk) {
+    state = reduce(state, act);
+    var prefix = fromWalk ? "Walk: " : "";
+    var note;
+    if (act.indexOf("lookup") === 0) note = state.lastLookup;
+    else if (state.skipped !== "none") note = state.skipped;
+    else if (state.lastWrite !== "none") note = state.lastWrite;
+    else note = state.lastHandler;
+    flash(prefix + note);
+    render();
+  }
+
+  document.querySelectorAll("[data-act]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      dispatch(btn.getAttribute("data-act"), false);
+    });
+  });
+
+  function resetWalk(i) {
+    activeWalk = i;
+    walkIndex = 0;
+    state = initialState();
+    flash("Walkthrough reset.");
+    render();
+    drawWalk();
+  }
+
+  function drawWalk() {
+    tabsEl.innerHTML = "";
+    walks.forEach(function (w, i) {
+      var b = document.createElement("button");
+      b.textContent = w.title;
+      b.setAttribute("role", "tab");
+      b.setAttribute("aria-selected", i === activeWalk ? "true" : "false");
+      b.addEventListener("click", function () { resetWalk(i); });
+      tabsEl.appendChild(b);
+    });
+    var w = walks[activeWalk];
+    walkEl.innerHTML = "";
+    var blurb = document.createElement("p");
+    blurb.className = "hint";
+    blurb.textContent = w.blurb;
+    walkEl.appendChild(blurb);
+    var ol = document.createElement("ol");
+    w.steps.forEach(function (step, i) {
+      var li = document.createElement("li");
+      var b = document.createElement("button");
+      b.textContent = step.label;
+      b.disabled = i !== walkIndex;
+      if (i === walkIndex) b.className = "primary";
+      b.addEventListener("click", function () {
+        if (i !== walkIndex) return;
+        dispatch(step.act, true);
+        walkIndex += 1;
+        drawWalk();
+      });
+      li.appendChild(b);
+      ol.appendChild(li);
+    });
+    walkEl.appendChild(ol);
+    if (walkIndex >= w.steps.length) {
+      var done = document.createElement("p");
+      done.className = "hint";
+      done.textContent = "Scenario finished. Pick another tab or free-play.";
+      walkEl.appendChild(done);
+    }
+  }
+
+  drawWalk();
+  render();
+})();
+  </script>
+</body>
+</html>
