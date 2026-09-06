@@ -13,4 +13,5 @@ export {
   TransportError,
 } from "./errors.js";
 export { GatewayIntent } from "./intents.js";
+export type { Message } from "./decode/index.js";
 export type { ClientOptions } from "./types.js";

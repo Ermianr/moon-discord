@@ -1,3 +1,4 @@
+import type { DispatchHandler, MessageCreateHandler } from "./dispatch-handlers.js";
 import { ConfigurationError } from "./errors.js";
 import { fetchHttp } from "./fetch-http.js";
 import { createRest, type RestSurface } from "./rest/surface.js";
@@ -21,7 +22,9 @@ export class Client {
     this.rest = createRest(fetchHttp(), options.token, systemClock());
   }
 
-  on(_dispatch: string, _handler: (payload: unknown) => void): () => void {
+  on(_dispatch: "MESSAGE_CREATE", _handler: MessageCreateHandler): () => void;
+  on(_dispatch: string, _handler: DispatchHandler): () => void;
+  on(_dispatch: string, _handler: MessageCreateHandler): () => void {
     return () => {};
   }
 
@@ -82,4 +85,5 @@ export {
   SaturatedError,
   TransportError,
   type ClientOptions,
+  type Message,
 } from "./public-api.js";

@@ -15,4 +15,5 @@ export {
   SaturatedError,
   TransportError,
   type ClientOptions,
+  type Message,
 } from "./public-api.js";

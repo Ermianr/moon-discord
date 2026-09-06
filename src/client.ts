@@ -1,4 +1,5 @@
 import type { GetGatewayBot } from "./decode/index.js";
+import type { DispatchHandler, MessageCreateHandler } from "./dispatch-handlers.js";
 import {
   encodePresenceUpdate,
   encodeRequestChannelInfo,
@@ -43,8 +44,6 @@ const idlePresence: PresenceUpdate = {
   status: "online",
   afk: false,
 };
-
-type DispatchHandler = (payload: object) => void;
 
 type SessionWaiter = {
   resolve: () => void;
@@ -140,7 +139,9 @@ export class Client {
     }, this.#tokenDeath);
   }
 
-  on(dispatch: string, handler: DispatchHandler): () => void {
+  on(dispatch: "MESSAGE_CREATE", handler: MessageCreateHandler): () => void;
+  on(dispatch: string, handler: DispatchHandler): () => void;
+  on(dispatch: string, handler: MessageCreateHandler): () => void {
     const binding = { t: dispatch, handler };
     this.#dispatchBindings.push(binding);
     return () => {
@@ -405,7 +406,13 @@ export class Client {
 
   #runHandler(handler: DispatchHandler, payload: object): void {
     try {
-      handler(payload);
+      const result = handler(payload);
+      if (result instanceof Promise) {
+        result.then(
+          () => {},
+          () => {},
+        );
+      }
     } catch {
       // Handler throws are isolated from Session and closed.
     }
