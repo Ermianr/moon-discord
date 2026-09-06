@@ -9,6 +9,11 @@
       "path": "representatives/rest.ts",
       "import": "moon-discord/rest",
       "backend": "llvm"
+    },
+    {
+      "name": "gateway",
+      "path": "representatives/gateway.ts",
+      "import": "moon-discord"
     }
   ]
 }

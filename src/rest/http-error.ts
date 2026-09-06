@@ -18,12 +18,15 @@ export function toDiscordHttpError(response: RestHttpResponse): DiscordHttpError
       const code = typeof codeValue === "number" ? codeValue : 0;
       const message = typeof messageValue === "string" ? messageValue : `HTTP ${String(response.status)}`;
       if ("errors" in parsed) {
-        return new DiscordHttpError({
-          status: response.status,
-          code,
-          message,
-          errors: parsed.errors,
-        });
+        const extra = parsed.errors;
+        if (typeof extra === "object" && extra !== null) {
+          return new DiscordHttpError({
+            status: response.status,
+            code,
+            message,
+            errors: extra,
+          });
+        }
       }
       return new DiscordHttpError({
         status: response.status,
@@ -72,7 +75,10 @@ export function retryAfterMs(response: RestHttpResponse): number | undefined {
 
 export function mapHttpAdapterError(error: unknown): never {
   if (error instanceof Error) {
-    if (error.name === "CancelledError" || error.name === "SaturatedError" || error.name === "TransportError") {
+    if (error.name === "CancelledError") {
+      throw new CancelledError(error.message);
+    }
+    if (error.name === "SaturatedError" || error.name === "TransportError") {
       throw error;
     }
     if (error.name === "AbortError") {

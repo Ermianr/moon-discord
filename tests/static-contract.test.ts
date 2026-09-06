@@ -47,7 +47,7 @@ test("reads npm pack --json object shape from npm 12", () => {
   );
 });
 
-test("static-contract.json names the REST LLVM lane without --dynamic", () => {
+test("static-contract.json names REST LLVM and Gateway default-backend lanes without --dynamic", () => {
   const contractPath = path.join(repoRoot, "static-contract.json");
   const contract = JSON.parse(fs.readFileSync(contractPath, "utf8")) as {
     compiler: string;
@@ -58,7 +58,7 @@ test("static-contract.json names the REST LLVM lane without --dynamic", () => {
       name: string;
       path: string;
       import: string;
-      backend: string;
+      backend?: string;
     }>;
   };
 
@@ -66,18 +66,35 @@ test("static-contract.json names the REST LLVM lane without --dynamic", () => {
   assert.equal(contract.dynamic, "forbidden");
   assert.deepEqual(contract.npmStatic, ["moon-discord"]);
   assert.equal(contract.platform, "linux-x86_64-glibc");
-  assert.equal(contract.entries.length, 1);
+  assert.equal(contract.entries.length, 2);
   const restEntry = contract.entries[0];
+  const gatewayEntry = contract.entries[1];
   assert.ok(restEntry !== undefined);
+  assert.ok(gatewayEntry !== undefined);
   assert.equal(restEntry.name, "rest");
   assert.equal(restEntry.path, "representatives/rest.ts");
   assert.equal(restEntry.import, "moon-discord/rest");
   assert.equal(restEntry.backend, "llvm");
+  assert.equal(gatewayEntry.name, "gateway");
+  assert.equal(gatewayEntry.path, "representatives/gateway.ts");
+  assert.equal(gatewayEntry.import, "moon-discord");
+  assert.equal("backend" in gatewayEntry, false);
 
-  const source = fs.readFileSync(path.join(repoRoot, restEntry.path), "utf8");
-  assert.match(source, /from "\.\.\/src\/rest\.js"/);
-  assert.equal(source.includes("--dynamic"), false);
-  assert.equal(source.includes("process.env"), false);
+  const restSource = fs.readFileSync(path.join(repoRoot, restEntry.path), "utf8");
+  assert.match(restSource, /from "\.\.\/src\/rest\.js"/);
+  assert.match(restSource, /files:/);
+  assert.equal(restSource.includes("--dynamic"), false);
+  assert.equal(restSource.includes("process.env"), false);
+  assert.equal(restSource.includes("tls.connect"), false);
+
+  const gatewaySource = fs.readFileSync(path.join(repoRoot, gatewayEntry.path), "utf8");
+  assert.match(gatewaySource, /from "\.\.\/src\/index\.js"/);
+  assert.match(gatewaySource, /shards: "recommended"/);
+  assert.match(gatewaySource, /files:/);
+  assert.match(gatewaySource, /MESSAGE_CREATE/);
+  assert.match(gatewaySource, /\.connect\(/);
+  assert.equal(gatewaySource.includes("--dynamic"), false);
+  assert.equal(gatewaySource.includes("process.env"), false);
 });
 
 test("npm tarball ships ESM JS, d.ts, src, and static-contract — not tests or agents", () => {
@@ -98,13 +115,15 @@ test("npm tarball ships ESM JS, d.ts, src, and static-contract — not tests or 
   );
 });
 
-test("CHANGELOG has a 0.1.0 Keep a Changelog section", () => {
+test("CHANGELOG has 0.1.0, 0.2.0, and 0.4.0 Keep a Changelog sections", () => {
   const changelog = fs.readFileSync(path.join(repoRoot, "CHANGELOG.md"), "utf8");
   assert.match(changelog, /^## \[0\.1\.0\]/m);
+  assert.match(changelog, /^## \[0\.2\.0\]/m);
+  assert.match(changelog, /^## \[0\.4\.0\]/m);
   assert.match(changelog, /Keep a Changelog/);
 });
 
-test("PR CI typechecks, tests, and covers the REST entry without a Discord token", () => {
+test("PR CI typechecks, tests, and covers contract entries without a Discord token", () => {
   const workflow = fs.readFileSync(path.join(repoRoot, ".github/workflows/pr.yml"), "utf8");
   const coverage = fs.readFileSync(path.join(repoRoot, "scripts/static-coverage.mjs"), "utf8");
   assert.match(workflow, /npm run typecheck/);
@@ -112,15 +131,52 @@ test("PR CI typechecks, tests, and covers the REST entry without a Discord token
   assert.match(workflow, /static-coverage\.mjs/);
   assert.match(coverage, /scriptc/);
   assert.match(coverage, /--backend/);
+  assert.match(coverage, /tls\.connect/);
+  assert.match(coverage, /tls\.connectCb/);
+  assert.match(coverage, /backend === "llvm"/);
   assert.equal(workflow.includes("--dynamic"), false);
   assert.equal(workflow.includes("DISCORD_TOKEN"), false);
   assert.equal(workflow.includes("BOT_TOKEN"), false);
+});
+
+test("PR CI runs a non-budget createTestClient MESSAGE_CREATE smoke", () => {
+  const workflow = fs.readFileSync(path.join(repoRoot, ".github/workflows/pr.yml"), "utf8");
+  const smoke = fs.readFileSync(path.join(repoRoot, "scripts/message-create-smoke.ts"), "utf8");
+  assert.match(workflow, /message-create-smoke/);
+  assert.match(smoke, /createTestClient/);
+  assert.match(smoke, /MESSAGE_CREATE/);
+  assert.equal(smoke.includes("medianUs"), false);
+  assert.equal(smoke.includes("p95Us"), false);
+  assert.equal(smoke.includes("--dynamic"), false);
+});
+
+test("PR CI runs a non-budget multipart encode smoke when Rest multipart is touched", () => {
+  const workflow = fs.readFileSync(path.join(repoRoot, ".github/workflows/pr.yml"), "utf8");
+  const smokeGate = fs.readFileSync(path.join(repoRoot, "scripts/multipart-smoke-gate.ts"), "utf8");
+  const smoke = fs.readFileSync(path.join(repoRoot, "scripts/multipart-encode-smoke.ts"), "utf8");
+  const filters = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, "benches/path-filters.json"), "utf8"),
+  ) as Record<string, unknown>;
+  assert.match(workflow, /multipart-smoke-gate/);
+  assert.match(smokeGate, /src\/rest\/multipart\.ts/);
+  assert.match(smoke, /createTestClient/);
+  assert.match(smoke, /payload_json/);
+  assert.match(smoke, /files\[0\]/);
+  assert.equal("multipart" in filters, false);
+  assert.equal("multipart-encode" in filters, false);
+  assert.equal(smoke.includes("medianUs"), false);
+  assert.equal(smoke.includes("p95Us"), false);
+  assert.equal(smokeGate.includes("--dynamic"), false);
 });
 
 test("tag release job can attach coverage and publish npm without a Discord token", () => {
   const workflow = fs.readFileSync(path.join(repoRoot, ".github/workflows/release.yml"), "utf8");
   const coverage = fs.readFileSync(path.join(repoRoot, "scripts/static-coverage.mjs"), "utf8");
   assert.match(workflow, /static-coverage\.mjs/);
+  assert.match(workflow, /coverage-rest\.txt/);
+  assert.match(workflow, /coverage-gateway\.txt/);
+  assert.match(workflow, /message-create-smoke/);
+  assert.match(workflow, /multipart-smoke-gate/);
   assert.match(workflow, /npm publish/);
   assert.match(coverage, /scriptc/);
   assert.equal(workflow.includes("--dynamic"), false);

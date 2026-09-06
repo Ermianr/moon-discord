@@ -38,21 +38,21 @@ export class DiscordHttpError extends MoonDiscordError {
   readonly code: number;
   readonly errorsJson: string | undefined;
 
-  constructor(fields: { status: number; code: number; message: string; errors?: unknown }) {
+  constructor(fields: { status: number; code: number; message: string; errors?: object }) {
     super(fields.message);
     this.name = "DiscordHttpError";
     this.status = fields.status;
     this.code = fields.code;
-    if ("errors" in fields) {
+    if (fields.errors !== undefined) {
       this.errorsJson = JSON.stringify(fields.errors);
     }
   }
 
-  get errors(): unknown {
+  get errors(): object | undefined {
     if (this.errorsJson === undefined) {
       return undefined;
     }
-    return JSON.parse(this.errorsJson);
+    return objectFromJson(this.errorsJson);
   }
 }
 
@@ -86,3 +86,11 @@ export const REST_MAX_WAIT_MS = 600_000;
 export const HTTP_5XX_RETRY_MS = 1_000;
 export const GATEWAY_SEND_QUEUE = 120;
 export const GATEWAY_SESSION_WAIT_MS = 60_000;
+
+function objectFromJson(text: string): object | undefined {
+  const parsed = JSON.parse(text) as object;
+  if (typeof parsed === "object" && parsed !== null) {
+    return parsed;
+  }
+  return undefined;
+}

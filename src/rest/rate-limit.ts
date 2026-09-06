@@ -24,7 +24,7 @@ const GLOBAL_WINDOW_MS = 1000;
 export function rateLimitedHttp(
   http: RestHttp,
   clock: Clock,
-  tokenDeath?: { error: DiscordHttpError | undefined },
+  tokenDeath?: { dead: boolean; error: DiscordHttpError },
 ): RestHttp {
   const hashes: HashEntry[] = [];
   const buckets: BucketEntry[] = [];
@@ -60,13 +60,13 @@ async function sendWhenReady(
   buckets: BucketEntry[],
   globalSends: number[],
   httpRequest: RestHttpRequest,
-  tokenDeath?: { error: DiscordHttpError | undefined },
+  tokenDeath?: { dead: boolean; error: DiscordHttpError },
 ): Promise<RestHttpResponse> {
   let other5xxRetried = false;
   let retryBackoffMs = 1000;
   const signal = httpRequest.signal;
   for (;;) {
-    if (tokenDeath !== undefined && tokenDeath.error !== undefined) {
+    if (tokenDeath !== undefined && tokenDeath.dead) {
       throw tokenDeath.error;
     }
     throwIfAborted(signal);

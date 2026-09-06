@@ -8,10 +8,10 @@ import {
   decodeSoundboardSounds,
 } from "./decode/index.js";
 import type { PresenceUpdate } from "./decode/gateway-send.js";
-import { CancelledError, GATEWAY_SEND_QUEUE, GatewayFatalError, SaturatedError } from "./errors.js";
+import { CancelledError, GATEWAY_SEND_QUEUE, SaturatedError } from "./errors.js";
 import type { Clock, GatewayConnect, GatewayConnection } from "./ports.js";
 
-export type UnknownDispatch = { t: string; d: unknown };
+export type UnknownDispatch = { t: string; d: object };
 
 export type SessionOptions = {
   url: string;
@@ -20,16 +20,16 @@ export type SessionOptions = {
   clock: Clock;
   connect: GatewayConnect;
   shard?: [number, number];
-  onFatal: (error: GatewayFatalError) => void;
+  onFatal: (closeCode: number) => void;
   onUnknownDispatch: (payload: UnknownDispatch) => void;
-  onDispatch: (payload: { t: string; d: unknown }) => void;
+  onDispatch: (payload: { t: string; d: object }) => void;
   onReadyLost: () => void;
 };
 
 export type SessionHandle = {
-  stop: (code: number, reason?: Error) => void;
-  enqueueApplication: (text: string, signal?: AbortSignal) => Promise<void>;
-  setIdentifyPresence: (presence: PresenceUpdate | undefined) => void;
+  stop: (code: number) => void;
+  enqueueApplication: (text: string, signal: AbortSignal | undefined) => Promise<void>;
+  setIdentifyPresence: (presence: PresenceUpdate) => void;
 };
 
 const OP_DISPATCH = 0;
@@ -52,8 +52,8 @@ function identifyOs(): string {
   return "linux";
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function asDispatchData(value: object): object {
+  return value;
 }
 
 function isFatalCloseCode(code: number): boolean {
@@ -199,44 +199,40 @@ export async function startSession(options: SessionOptions): Promise<SessionHand
     });
   };
 
-  const onHello = (data: unknown): void => {
-    if (!isRecord(data)) {
+  const onHello = (text: string): void => {
+    try {
+      const interval = (JSON.parse(text) as { d: { heartbeat_interval: number } }).d.heartbeat_interval;
+      heartbeatIntervalMs = interval;
+      scheduleNextHeartbeat(interval * Math.random());
+    } catch {
       return;
-    }
-    const interval = data["heartbeat_interval"];
-    if (typeof interval !== "number") {
-      return;
-    }
-    heartbeatIntervalMs = interval;
-    scheduleNextHeartbeat(interval * Math.random());
-  };
-
-  const rememberSequence = (payload: Record<string, unknown>): void => {
-    const s = payload["s"];
-    if (typeof s === "number") {
-      sequence = s;
     }
   };
 
-  const emitDecoded = (t: string, d: unknown, decode: (value: unknown) => unknown): void => {
+  const rememberSequence = (text: string): void => {
+    try {
+      const s = (JSON.parse(text) as { s: number }).s;
+      if (typeof s === "number") {
+        sequence = s;
+      }
+    } catch {
+      return;
+    }
+  };
+
+  const emitDecoded = (t: string, d: object, decode: (value: unknown) => object): void => {
     try {
       options.onDispatch({ t, d: decode(d) });
-    } catch (error: unknown) {
+    } catch (error) {
       if (error instanceof Error && error.name === "DecodeError") {
-        options.onUnknownDispatch({ t, d });
+        options.onUnknownDispatch({ t, d: asDispatchData(d) });
         return;
       }
       throw error;
     }
   };
 
-  const onDispatch = (payload: Record<string, unknown>): void => {
-    const t = payload["t"];
-    if (typeof t !== "string") {
-      beginProtocolFailure();
-      return;
-    }
-    const d = payload["d"];
+  const onDispatch = (t: string, d: object): void => {
     if (t === "READY") {
       try {
         const ready = decodeReady(d);
@@ -246,9 +242,9 @@ export async function startSession(options: SessionOptions): Promise<SessionHand
         applicationReady = true;
         options.onDispatch({ t, d: ready });
         drainApplication();
-      } catch (error: unknown) {
+      } catch (error) {
         if (error instanceof Error && error.name === "DecodeError") {
-          options.onUnknownDispatch({ t, d });
+          options.onUnknownDispatch({ t, d: asDispatchData(d) });
           return;
         }
         throw error;
@@ -262,9 +258,9 @@ export async function startSession(options: SessionOptions): Promise<SessionHand
         applicationReady = true;
         options.onDispatch({ t, d: resumed });
         drainApplication();
-      } catch (error: unknown) {
+      } catch (error) {
         if (error instanceof Error && error.name === "DecodeError") {
-          options.onUnknownDispatch({ t, d });
+          options.onUnknownDispatch({ t, d: asDispatchData(d) });
           return;
         }
         throw error;
@@ -275,9 +271,9 @@ export async function startSession(options: SessionOptions): Promise<SessionHand
       try {
         const message = decodeMessage(d);
         options.onDispatch({ t, d: message });
-      } catch (error: unknown) {
+      } catch (error) {
         if (error instanceof Error && error.name === "DecodeError") {
-          options.onUnknownDispatch({ t, d });
+          options.onUnknownDispatch({ t, d: asDispatchData(d) });
           return;
         }
         throw error;
@@ -300,7 +296,7 @@ export async function startSession(options: SessionOptions): Promise<SessionHand
       emitDecoded("SOUNDBOARD_SOUNDS", d, decodeSoundboardSounds);
       return;
     }
-    options.onUnknownDispatch({ t, d });
+    options.onUnknownDispatch({ t, d: asDispatchData(d) });
   };
 
   const onText = (text: string): void => {
@@ -312,25 +308,16 @@ export async function startSession(options: SessionOptions): Promise<SessionHand
   };
 
   const deliverText = (text: string): void => {
-    let parsed: unknown;
+    let op = 0;
     try {
-      parsed = JSON.parse(text);
+      op = (JSON.parse(text) as { op: number }).op;
     } catch {
       beginProtocolFailure();
       return;
     }
-    if (!isRecord(parsed)) {
-      beginProtocolFailure();
-      return;
-    }
-    const op = parsed["op"];
-    if (typeof op !== "number") {
-      beginProtocolFailure();
-      return;
-    }
-    rememberSequence(parsed);
+    rememberSequence(text);
     if (op === OP_HELLO) {
-      onHello(parsed["d"]);
+      onHello(text);
       return;
     }
     if (op === OP_HEARTBEAT_ACK) {
@@ -346,7 +333,12 @@ export async function startSession(options: SessionOptions): Promise<SessionHand
       return;
     }
     if (op === OP_INVALID_SESSION) {
-      const resumable = parsed["d"] === true;
+      let resumable = false;
+      try {
+        resumable = (JSON.parse(text) as { d: boolean }).d === true;
+      } catch {
+        resumable = false;
+      }
       if (resumable) {
         beginResumeOrIdentifyNow(CLOSE_PROTOCOL);
         return;
@@ -355,7 +347,20 @@ export async function startSession(options: SessionOptions): Promise<SessionHand
       return;
     }
     if (op === OP_DISPATCH) {
-      onDispatch(parsed);
+      let t: string;
+      try {
+        t = (JSON.parse(text) as { t: string }).t;
+      } catch {
+        beginProtocolFailure();
+        return;
+      }
+      let d: object = {};
+      try {
+        d = (JSON.parse(text) as { d: object }).d;
+      } catch {
+        d = {};
+      }
+      onDispatch(t, d);
     }
   };
 
@@ -369,7 +374,7 @@ export async function startSession(options: SessionOptions): Promise<SessionHand
     }
     if (code !== undefined && isFatalCloseCode(code)) {
       stopped = true;
-      options.onFatal(new GatewayFatalError({ closeCode: code }));
+      options.onFatal(code);
       return;
     }
     if (code === 1000 || code === 1001) {
@@ -571,7 +576,7 @@ export async function startSession(options: SessionOptions): Promise<SessionHand
 
   const enqueueApplication = (text: string, signal?: AbortSignal): Promise<void> => {
     if (stopped) {
-      return Promise.reject(new CancelledError("Gateway send was cancelled"));
+      return Promise.reject(new CancelledError("disconnect cancelled Gateway send"));
     }
     if (signal !== undefined && signal.aborted) {
       return Promise.reject(new CancelledError("Gateway send was aborted"));
@@ -596,7 +601,7 @@ export async function startSession(options: SessionOptions): Promise<SessionHand
     });
   };
 
-  const stop = (code: number, reason?: Error): void => {
+  const stop = (code: number): void => {
     stopped = true;
     markReadyLost();
     clearHeartbeat();
@@ -605,7 +610,7 @@ export async function startSession(options: SessionOptions): Promise<SessionHand
       cancelPace();
       cancelPace = undefined;
     }
-    rejectQueue(reason === undefined ? new CancelledError("disconnect cancelled Gateway send") : reason);
+    rejectQueue(new CancelledError("disconnect cancelled Gateway send"));
     const current = connection;
     connection = undefined;
     if (current !== undefined) {
@@ -614,11 +619,12 @@ export async function startSession(options: SessionOptions): Promise<SessionHand
   };
 
   await openGateway(options.url, false);
-  return {
+  const handle: SessionHandle = {
     stop,
-    enqueueApplication,
+    enqueueApplication: (text, signal) => enqueueApplication(text, signal),
     setIdentifyPresence: (presence) => {
       identifyPresence = presence;
     },
   };
+  return handle;
 }

@@ -25,7 +25,15 @@ jobs:
         run: npm install -g scriptc@0.0.36
       - run: npm run build
       - name: REST static coverage
-        run: node scripts/static-coverage.mjs | tee coverage-rest.txt
+        run: node scripts/static-coverage.mjs rest | tee coverage-rest.txt
+      - name: Gateway static coverage
+        run: node scripts/static-coverage.mjs gateway | tee coverage-gateway.txt
+      - name: MESSAGE_CREATE smoke
+        run: node --import tsx scripts/message-create-smoke.ts
+      - name: Multipart encode smoke
+        env:
+          HOT_PATH_ALL: "1"
+        run: node --import tsx scripts/multipart-smoke-gate.ts
       - name: Hot-path ELF compare
         env:
           HOT_PATH_ALL: "1"
@@ -33,7 +41,9 @@ jobs:
       - name: Attach coverage to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: coverage-rest.txt
+          files: |
+            coverage-rest.txt
+            coverage-gateway.txt
           fail_on_unmatched_files: true
       - name: Publish npm
         run: npm publish

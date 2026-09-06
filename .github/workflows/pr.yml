@@ -21,8 +21,15 @@ jobs:
       - run: npm test
       - name: Install pinned scriptc
         run: npm install -g scriptc@0.0.36
-      - name: REST static coverage
+      - name: Static coverage
         run: node scripts/static-coverage.mjs
+      - name: MESSAGE_CREATE smoke
+        run: node --import tsx scripts/message-create-smoke.ts
+      - name: Multipart encode smoke
+        env:
+          HOT_PATH_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HOT_PATH_HEAD: ${{ github.sha }}
+        run: node --import tsx scripts/multipart-smoke-gate.ts
       - name: Hot-path ELF compare
         env:
           HOT_PATH_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}

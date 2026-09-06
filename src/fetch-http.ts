@@ -11,8 +11,11 @@ export function fetchHttp(): RestHttp {
       if (typeof request.body === "string") {
         init.body = request.body;
       } else if (request.body !== undefined) {
-        const bytes = new Uint8Array(request.body.length);
-        bytes.set(request.body);
+        const source = request.body;
+        const bytes = new Uint8Array(source.length);
+        for (let index = 0; index < source.length; index += 1) {
+          bytes[index] = source[index] ?? 0;
+        }
         init.body = bytes;
       }
       if ("signal" in request && request.signal !== undefined) {
@@ -21,7 +24,7 @@ export function fetchHttp(): RestHttp {
       try {
         const response = await fetch(request.url, init);
         const headers: Record<string, string> = {};
-        response.headers.forEach((value, key) => {
+        response.headers.forEach((value, key, _headers) => {
           headers[key] = value;
         });
         return {

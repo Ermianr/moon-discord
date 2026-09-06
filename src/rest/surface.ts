@@ -74,7 +74,7 @@ export function createCreateMessageDispatch(http: RestHttp, token: string, clock
 function createMessageDispatch(
   http: RestHttp,
   token: string,
-  onUnauthorized?: (error: unknown) => void,
+  onUnauthorized?: (error: Error) => void,
 ): CreateMessageDispatch {
   const botHeaders = {
     Authorization: `Bot ${token}`,
@@ -103,8 +103,11 @@ function createMessageDispatch(
     try {
       rejectUnlessOk(response);
     } catch (error: unknown) {
-      if (error instanceof Error && error instanceof DiscordHttpError && error.status === 401 && onUnauthorized !== undefined) {
-        onUnauthorized(error);
+      if (onUnauthorized !== undefined && error instanceof Error && error.name === "DiscordHttpError") {
+        const status = (error as DiscordHttpError).status;
+        if (status === 401) {
+          onUnauthorized(error);
+        }
       }
       throw error;
     }
@@ -113,20 +116,24 @@ function createMessageDispatch(
 }
 
 type TokenDeath = {
-  error: DiscordHttpError | undefined;
+  dead: boolean;
+  error: DiscordHttpError;
 };
 
 export function createRest(
   http: RestHttp,
   token: string,
   clock: Clock,
-  onUnauthorized?: (error: unknown) => void,
+  onUnauthorized?: (error: Error) => void,
   tokenDeath?: TokenDeath,
 ): RestSurface {
   http = rateLimitedHttp(http, clock, tokenDeath);
-  const notifyUnauthorized = (error: unknown): void => {
-    if (error instanceof Error && error instanceof DiscordHttpError && error.status === 401 && onUnauthorized !== undefined) {
-      onUnauthorized(error);
+  const notifyUnauthorized = (error: Error): void => {
+    if (onUnauthorized !== undefined && error instanceof Error && error.name === "DiscordHttpError") {
+      const status = (error as DiscordHttpError).status;
+      if (status === 401) {
+        onUnauthorized(error);
+      }
     }
   };
   const limited = http;
@@ -135,7 +142,9 @@ export function createRest(
       try {
         return await limited.request(request);
       } catch (error: unknown) {
-        notifyUnauthorized(error);
+        if (error instanceof Error) {
+          notifyUnauthorized(error);
+        }
         throw error;
       }
     },
@@ -148,8 +157,11 @@ export function createRest(
     try {
       rejectUnlessOk(response);
     } catch (error: unknown) {
-      if (error instanceof Error && error instanceof DiscordHttpError && error.status === 401 && onUnauthorized !== undefined) {
-        onUnauthorized(error);
+      if (onUnauthorized !== undefined && error instanceof Error && error.name === "DiscordHttpError") {
+        const status = (error as DiscordHttpError).status;
+        if (status === 401) {
+          onUnauthorized(error);
+        }
       }
       throw error;
     }
@@ -257,7 +269,7 @@ export function createRest(
 }
 
 function throwIfTokenDead(tokenDeath: TokenDeath | undefined): void {
-  if (tokenDeath !== undefined && tokenDeath.error !== undefined) {
+  if (tokenDeath !== undefined && tokenDeath.dead) {
     throw tokenDeath.error;
   }
 }

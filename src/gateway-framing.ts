@@ -16,7 +16,7 @@ export type GatewayConn = {
 export type GatewayConnHandlers = {
   onText: (text: string) => void;
   onClose: (code: number | undefined) => void;
-  onError: (error: TransportError) => void;
+  onError: (error: Error) => void;
 };
 
 const WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -108,7 +108,7 @@ export function openGatewayConnection(
     }
     if (opcode === OP_TEXT) {
       try {
-        handlers.onText(new TextDecoder("utf-8", { fatal: true }).decode(payload));
+        handlers.onText(new TextDecoder().decode(payload));
       } catch {
         fail(new TransportError("Gateway text frame is not UTF-8"));
       }

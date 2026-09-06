@@ -37,6 +37,20 @@ test("docs-only changes do not touch Decode or REST dispatch ELF prefixes", () =
     scenarioTouched(files, ["src/rest/", "benches/rest-dispatch/", "fixtures/rest-dispatch/"]),
     false,
   );
+  assert.equal(scenarioTouched(files, ["src/rest/multipart.ts"]), false);
+});
+
+test("multipart encode smoke prefixes are not a fourth hot-path scenario", () => {
+  const filters = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, "benches/path-filters.json"), "utf8"),
+  ) as Record<string, { paths?: string[] }>;
+  assert.equal(Object.keys(filters).length, 2);
+  for (const name of Object.keys(filters)) {
+    assert.notEqual(name, "multipart");
+    assert.notEqual(name, "multipart-encode");
+  }
+  assert.equal(scenarioTouched(["src/rest/multipart.ts"], ["src/rest/multipart.ts"]), true);
+  assert.equal(scenarioTouched(["src/rest/rate-limit.ts"], ["src/rest/multipart.ts"]), false);
 });
 
 test("Decode and Rest implementation paths trigger their ELF scenarios", () => {

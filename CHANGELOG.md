@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Client `connect` / `disconnect` / `closed` Gateway lifetime, Discord `t` dispatch via `on`, and `onUnknownDispatch`.
 
+## [0.2.0] - unreleased
+
+### Added
+
+- Gateway representative imports `moon-discord` and compiles on the default backend with no `--dynamic`; the only accepted C-fallback is `tls.connect` / `tls.connectCb`.
+- PR and tag CI cover both static-contract entries and run a non-budget `createTestClient` `MESSAGE_CREATE` smoke.
+
 ## [0.4.0] - unreleased
 
 ### Added

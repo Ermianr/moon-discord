@@ -28,7 +28,16 @@ export function connectGatewayTransport(
   handlers: GatewayConnHandlers,
 ): Promise<GatewayConn> {
   const parsed = new URL(url);
-  const port = parsed.port === "" ? 443 : Number(parsed.port);
+  const host = parsed.host;
+  let port = 443;
+  const colon = host.lastIndexOf(":");
+  if (colon >= 0) {
+    const portText = host.slice(colon + 1);
+    const parsedPort = Number(portText);
+    if (parsedPort === parsedPort) {
+      port = parsedPort;
+    }
+  }
   const options = gatewayTlsConnectOptions(parsed.hostname, port);
   const tlsSocket = tls.connect(options);
   const socket = wrapTlsSocket(tlsSocket);
@@ -43,15 +52,20 @@ export function connectGatewayTransport(
       handlers.onError(error);
     });
     tlsSocket.on("secureConnect", () => {
-      openGatewayConnection(url, socket, handlers).then(
-        (conn) => {
+      void (async () => {
+        try {
+          const conn = await openGatewayConnection(url, socket, handlers);
           handshakeDone = true;
           resolve(conn);
-        },
-        (error: Error) => {
-          reject(error instanceof TransportError ? error : new TransportError(error.message));
-        },
-      );
+        } catch (error: unknown) {
+          if (error instanceof Error && error.name === "TransportError") {
+            reject(error);
+            return;
+          }
+          const message = error instanceof Error ? error.message : "";
+          reject(new TransportError(message));
+        }
+      })();
     });
   });
 }
