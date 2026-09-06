@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -21,3 +23,8 @@ jobs:
         run: npm install -g scriptc@0.0.36
       - name: REST static coverage
         run: node scripts/static-coverage.mjs
+      - name: Hot-path ELF compare
+        env:
+          HOT_PATH_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HOT_PATH_HEAD: ${{ github.sha }}
+        run: node --import tsx scripts/hot-path-gate.ts

@@ -1,0 +1,20 @@
+{
+  "decode": {
+    "scenario": "decode",
+    "compiler": "0.0.36",
+    "lane": "llvm-rest",
+    "backend": "llvm",
+    "entry": "benches/decode/main.ts",
+    "baseline": "benches/decode/baseline.json",
+    "paths": ["src/decode/", "benches/decode/", "benches/lib/", "fixtures/decode/", "scripts/hot-path-gate.ts"]
+  },
+  "rest-dispatch": {
+    "scenario": "rest-dispatch",
+    "compiler": "0.0.36",
+    "lane": "llvm-rest",
+    "backend": "llvm",
+    "entry": "benches/rest-dispatch/main.ts",
+    "baseline": "benches/rest-dispatch/baseline.json",
+    "paths": ["src/rest/", "benches/rest-dispatch/", "benches/lib/", "fixtures/rest-dispatch/", "scripts/hot-path-gate.ts"]
+  }
+}

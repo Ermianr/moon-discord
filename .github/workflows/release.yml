@@ -26,6 +26,10 @@ jobs:
       - run: npm run build
       - name: REST static coverage
         run: node scripts/static-coverage.mjs | tee coverage-rest.txt
+      - name: Hot-path ELF compare
+        env:
+          HOT_PATH_ALL: "1"
+        run: node --import tsx scripts/hot-path-gate.ts
       - name: Attach coverage to GitHub Release
         uses: softprops/action-gh-release@v2
         with:

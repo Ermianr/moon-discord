@@ -1,0 +1,8 @@
+{
+  "scenario": "rest-dispatch",
+  "compiler": "0.0.36",
+  "lane": "llvm-rest",
+  "platform": "linux-x86_64-glibc",
+  "medianUs": 34.96120833733585,
+  "p95Us": 40.89680208320109
+}

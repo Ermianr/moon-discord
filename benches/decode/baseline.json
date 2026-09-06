@@ -1,0 +1,8 @@
+{
+  "scenario": "decode",
+  "compiler": "0.0.36",
+  "lane": "llvm-rest",
+  "platform": "linux-x86_64-glibc",
+  "medianUs": 5.259283447458074,
+  "p95Us": 5.899331542877917
+}

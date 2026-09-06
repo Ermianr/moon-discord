@@ -1,0 +1,47 @@
+{
+  "v": 10,
+  "user": {
+    "id": "53908099506183680",
+    "username": "Mason",
+    "discriminator": "9999",
+    "avatar": "a_bab14f271d565501444b2ca3be944b25",
+    "bot": true,
+    "global_name": null
+  },
+  "guilds": [
+    {
+      "id": "41771983423143937",
+      "name": "Discord Developers",
+      "icon": "edc84e10b5add3172adc1b0c6f20d4e6",
+      "unavailable": false,
+      "owner_id": "80351110224678912",
+      "members": [{ "user": { "id": "80351110224678912" }, "roles": [], "joined_at": "2015-04-26T06:26:56.936000+00:00" }],
+      "channels": [
+        { "id": "290926798999357250", "type": 0, "name": "general", "position": 0, "permission_overwrites": [] },
+        { "id": "290926798999357251", "type": 0, "name": "off-topic", "position": 1, "permission_overwrites": [] }
+      ],
+      "roles": [
+        { "id": "41771983423143937", "name": "@everyone", "permissions": "104324161" },
+        { "id": "223344", "name": "weeb", "permissions": "104324161" }
+      ],
+      "presences": [{ "user": { "id": "80351110224678912" }, "status": "online", "activities": [] }]
+    },
+    {
+      "id": "41771983423143938",
+      "name": "Another Guild",
+      "icon": null,
+      "unavailable": false,
+      "owner_id": "53908099506183680",
+      "members": [],
+      "channels": [{ "id": "1", "type": 0, "name": "lobby", "position": 0, "permission_overwrites": [] }],
+      "roles": [{ "id": "41771983423143938", "name": "@everyone", "permissions": "0" }],
+      "presences": []
+    }
+  ],
+  "session_id": "abcde12345",
+  "resume_gateway_url": "wss://gateway-us-east1-b.discord.gg",
+  "shard": [0, 1],
+  "application": { "id": "613425648685547541", "flags": 0 },
+  "heartbeat_interval": 41250,
+  "trace": ["gateway-prd-us-east1-b", "discord-gateway-prd-1-99"]
+}
