@@ -300,8 +300,24 @@ test("disconnect closes 1000 and does not reconnect", async () => {
   assert.equal(gateway.urls.length, 1);
 });
 
-test("fatal close 4004 rejects connect and closed and does not reconnect", async () => {
+test("fatal close 4004 after READY rejects closed and does not reconnect", async () => {
   const { clock, gateway, connectPromise, client } = await readySession();
+  await connectPromise;
+  gateway.remoteClose(4004);
+  await assert.rejects(client.closed, (error: unknown) => {
+    assert.ok(error instanceof GatewayFatalError);
+    assert.equal(error.closeCode, 4004);
+    return true;
+  });
+  clock.advance(2000);
+  assert.equal(gateway.urls.length, 1);
+});
+
+test("fatal close 4004 before READY rejects connect and closed", async () => {
+  const { clock, gateway, connectPromise, client } = await connectingClient();
+  gateway.inbound(hello(1000));
+  clock.advance(1000);
+  gateway.inbound(JSON.stringify({ op: 11, d: null }));
   gateway.remoteClose(4004);
   await assert.rejects(connectPromise, (error: unknown) => {
     assert.ok(error instanceof GatewayFatalError);
@@ -323,10 +339,11 @@ for (let i = 0; i < fatalCodes.length; i += 1) {
   if (closeCode === undefined) {
     continue;
   }
-  test(`fatal close ${String(closeCode)} does not reconnect`, async () => {
-    const { clock, gateway, connectPromise } = await readySession();
+  test(`fatal close ${String(closeCode)} after READY does not reconnect`, async () => {
+    const { clock, gateway, connectPromise, client } = await readySession();
+    await connectPromise;
     gateway.remoteClose(closeCode);
-    await assert.rejects(connectPromise, (error: unknown) => {
+    await assert.rejects(client.closed, (error: unknown) => {
       assert.ok(error instanceof GatewayFatalError);
       assert.equal(error.closeCode, closeCode);
       return true;

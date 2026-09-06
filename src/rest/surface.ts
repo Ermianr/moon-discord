@@ -68,13 +68,13 @@ export type CreateMessageDispatch = (
 ) => Promise<RestHttpResponse>;
 
 export function createCreateMessageDispatch(http: RestHttp, token: string, clock: Clock): CreateMessageDispatch {
-  return createMessageDispatch(rateLimitedHttp(http, clock), token);
+  return createMessageDispatch(rateLimitedHttp(http, clock, undefined), token, undefined);
 }
 
 function createMessageDispatch(
   http: RestHttp,
   token: string,
-  onUnauthorized?: (error: DiscordHttpError) => void,
+  onUnauthorized?: (error: unknown) => void,
 ): CreateMessageDispatch {
   const botHeaders = {
     Authorization: `Bot ${token}`,
@@ -103,7 +103,7 @@ function createMessageDispatch(
     try {
       rejectUnlessOk(response);
     } catch (error: unknown) {
-      if (error instanceof DiscordHttpError && error.status === 401 && onUnauthorized !== undefined) {
+      if (error instanceof Error && error instanceof DiscordHttpError && error.status === 401 && onUnauthorized !== undefined) {
         onUnauthorized(error);
       }
       throw error;
@@ -112,13 +112,34 @@ function createMessageDispatch(
   };
 }
 
+type TokenDeath = {
+  error: DiscordHttpError | undefined;
+};
+
 export function createRest(
   http: RestHttp,
   token: string,
   clock: Clock,
-  onUnauthorized?: (error: DiscordHttpError) => void,
+  onUnauthorized?: (error: unknown) => void,
+  tokenDeath?: TokenDeath,
 ): RestSurface {
-  http = rateLimitedHttp(http, clock);
+  http = rateLimitedHttp(http, clock, tokenDeath);
+  const notifyUnauthorized = (error: unknown): void => {
+    if (error instanceof Error && error instanceof DiscordHttpError && error.status === 401 && onUnauthorized !== undefined) {
+      onUnauthorized(error);
+    }
+  };
+  const limited = http;
+  http = {
+    request: async (request) => {
+      try {
+        return await limited.request(request);
+      } catch (error: unknown) {
+        notifyUnauthorized(error);
+        throw error;
+      }
+    },
+  };
   const botHeaders = {
     Authorization: `Bot ${token}`,
     "User-Agent": USER_AGENT,
@@ -127,7 +148,7 @@ export function createRest(
     try {
       rejectUnlessOk(response);
     } catch (error: unknown) {
-      if (error instanceof DiscordHttpError && error.status === 401 && onUnauthorized !== undefined) {
+      if (error instanceof Error && error instanceof DiscordHttpError && error.status === 401 && onUnauthorized !== undefined) {
         onUnauthorized(error);
       }
       throw error;
@@ -136,6 +157,7 @@ export function createRest(
   const dispatchCreateMessage = createMessageDispatch(http, token, onUnauthorized);
   return {
     execute: async (request) => {
+      throwIfTokenDead(tokenDeath);
       const headers: Record<string, string> = {
         ...botHeaders,
       };
@@ -168,6 +190,7 @@ export function createRest(
       return parsed;
     },
     getGateway: async (options) => {
+      throwIfTokenDead(tokenDeath);
       const httpRequest: RestHttpRequest = {
         method: "GET",
         url: `${API_BASE}/gateway`,
@@ -181,6 +204,7 @@ export function createRest(
       return decodeGetGateway(parseJsonBody(response, "Get Gateway"));
     },
     getGatewayBot: async (options) => {
+      throwIfTokenDead(tokenDeath);
       const httpRequest: RestHttpRequest = {
         method: "GET",
         url: `${API_BASE}/gateway/bot`,
@@ -192,10 +216,12 @@ export function createRest(
       return decodeGetGatewayBot(parseJsonBody(response, "Get Gateway Bot"));
     },
     createMessage: async (channelId, body, options) => {
+      throwIfTokenDead(tokenDeath);
       const response = await dispatchCreateMessage(channelId, body, options);
       return decodeMessage(parseJsonBody(response, "Create Message"));
     },
     deleteMessage: async (channelId, messageId, options) => {
+      throwIfTokenDead(tokenDeath);
       const httpRequest: RestHttpRequest = {
         method: "DELETE",
         url: `${API_BASE}/channels/${channelId}/messages/${messageId}`,
@@ -206,6 +232,7 @@ export function createRest(
       rejectHttp(response);
     },
     createGuildSticker: async (guildId, body, options) => {
+      throwIfTokenDead(tokenDeath);
       const encoded = encodeNamedForm([
         { name: "name", body: utf8(body.name) },
         { name: "description", body: utf8(body.description) },
@@ -227,6 +254,12 @@ export function createRest(
       return decodeSticker(parseJsonBody(response, "Create Guild Sticker"));
     },
   };
+}
+
+function throwIfTokenDead(tokenDeath: TokenDeath | undefined): void {
+  if (tokenDeath !== undefined && tokenDeath.error !== undefined) {
+    throw tokenDeath.error;
+  }
 }
 
 function utf8(value: string): Uint8Array {

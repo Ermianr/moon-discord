@@ -1,4 +1,4 @@
-import { decodeMessage, decodeReady } from "./decode/index.js";
+import { decodeMessage, decodeReady, decodeResumed } from "./decode/index.js";
 import { DecodeError, GatewayFatalError } from "./errors.js";
 import type { Clock, GatewayConnect, GatewayConnection } from "./ports.js";
 
@@ -13,6 +13,7 @@ export type SessionOptions = {
   shard?: [number, number];
   onFatal: (error: GatewayFatalError) => void;
   onUnknownDispatch: (payload: UnknownDispatch) => void;
+  onDispatch: (payload: { t: string; d: unknown }) => void;
 };
 
 export type SessionHandle = {
@@ -61,6 +62,7 @@ export async function startSession(options: SessionOptions): Promise<SessionHand
   let identifyBackoffMs = IDENTIFY_BACKOFF_START_MS;
   let stopped = false;
   let reconnecting = false;
+  let pendingTexts: string[] = [];
 
   const clearHeartbeat = (): void => {
     if (cancelHeartbeat !== undefined) {
@@ -145,7 +147,7 @@ export async function startSession(options: SessionOptions): Promise<SessionHand
 
   const sendHeartbeat = (immediate: boolean): boolean => {
     if (connection === undefined) {
-      return false;
+      return true;
     }
     if (awaitingAck && !immediate) {
       return false;
@@ -204,6 +206,21 @@ export async function startSession(options: SessionOptions): Promise<SessionHand
         sessionId = ready.session_id;
         resumeGatewayUrl = ready.resume_gateway_url;
         identifyBackoffMs = IDENTIFY_BACKOFF_START_MS;
+        options.onDispatch({ t, d: ready });
+      } catch (error: unknown) {
+        if (error instanceof DecodeError) {
+          options.onUnknownDispatch({ t, d });
+          return;
+        }
+        throw error;
+      }
+      return;
+    }
+    if (t === "RESUMED") {
+      try {
+        const resumed = decodeResumed(d);
+        identifyBackoffMs = IDENTIFY_BACKOFF_START_MS;
+        options.onDispatch({ t, d: resumed });
       } catch (error: unknown) {
         if (error instanceof DecodeError) {
           options.onUnknownDispatch({ t, d });
@@ -215,7 +232,8 @@ export async function startSession(options: SessionOptions): Promise<SessionHand
     }
     if (t === "MESSAGE_CREATE") {
       try {
-        decodeMessage(d);
+        const message = decodeMessage(d);
+        options.onDispatch({ t, d: message });
       } catch (error: unknown) {
         if (error instanceof DecodeError) {
           options.onUnknownDispatch({ t, d });
@@ -229,6 +247,14 @@ export async function startSession(options: SessionOptions): Promise<SessionHand
   };
 
   const onText = (text: string): void => {
+    if (connection === undefined) {
+      pendingTexts.push(text);
+      return;
+    }
+    deliverText(text);
+  };
+
+  const deliverText = (text: string): void => {
     let parsed: unknown;
     try {
       parsed = JSON.parse(text) as unknown;
@@ -304,6 +330,7 @@ export async function startSession(options: SessionOptions): Promise<SessionHand
     authed = false;
     awaitingAck = false;
     heartbeatIntervalMs = 0;
+    pendingTexts = [];
     const next = await options.connect(url, {
       onText,
       onClose,
@@ -315,6 +342,14 @@ export async function startSession(options: SessionOptions): Promise<SessionHand
     }
     connection = next;
     reconnecting = false;
+    const queued = pendingTexts;
+    pendingTexts = [];
+    for (let index = 0; index < queued.length; index += 1) {
+      const text = queued[index];
+      if (text !== undefined) {
+        deliverText(text);
+      }
+    }
   };
 
   const beginResumeOrIdentifyNow = (closeCode: number | undefined): void => {

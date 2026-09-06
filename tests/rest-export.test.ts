@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Client, ConfigurationError } from "moon-discord/rest";
 
-test("REST-only Client constructs without intents", () => {
+test("disconnect on the Rest export fulfills closed", async () => {
   const client = new Client({ token: "bot-token" });
-  assert.equal(typeof client.connect, "function");
+  await client.disconnect();
+  await client.closed;
 });
 
 test("connect on the Rest export throws ConfigurationError with no Discord I/O", async () => {

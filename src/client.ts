@@ -1,11 +1,13 @@
 import type { GetGatewayBot } from "./decode/index.js";
-import { ConfigurationError, DiscordHttpError, GatewayFatalError } from "./errors.js";
+import { CancelledError, ConfigurationError, DiscordHttpError, GatewayFatalError } from "./errors.js";
 import type { GatewayConnect, Ports } from "./ports.js";
 import { createRest, type RestSurface } from "./rest-surface.js";
 import { startSession, type SessionHandle, type SessionOptions, type UnknownDispatch } from "./session.js";
 import type { ClientOptions } from "./types.js";
 
 export type { RestSurface };
+
+type DispatchHandler = (payload: unknown) => void;
 
 export class Client {
   readonly rest: RestSurface;
@@ -17,8 +19,14 @@ export class Client {
   #resolveClosed = () => {};
   #rejectClosed = (_error: unknown) => {};
   #closedSettled = false;
+  #live = false;
+  #fatal: unknown | undefined;
+  #tokenDeath: { error: DiscordHttpError | undefined } = { error: undefined };
+  #resolveConnect: (() => void) | undefined;
   #rejectConnect: ((error: unknown) => void) | undefined;
-  #unknownDispatchHandlers: ((payload: unknown) => void)[] = [];
+  #unknownDispatchHandlers: DispatchHandler[] = [];
+  #dispatchBindings: { t: string; handler: DispatchHandler }[] = [];
+  #abortConnect: (() => void) | undefined;
 
   constructor(options: ClientOptions, ports: Ports) {
     let resolveClosed = () => {};
@@ -35,19 +43,32 @@ export class Client {
     this.#rejectClosed = rejectClosed;
     this.#ports = ports;
     this.#options = options;
-    this.rest = createRest(ports.http, options.token, ports.clock, (error) => {
-      this.#onUnauthorized(error);
-    });
+    this.rest = createRest(ports.http, options.token, ports.clock, (error: unknown) => {
+      if (error instanceof DiscordHttpError) {
+        this.#onUnauthorized(error);
+      }
+    }, this.#tokenDeath);
   }
 
-  on(_dispatch: string, _handler: (payload: unknown) => void): () => void {
-    return () => {};
+  on(dispatch: string, handler: DispatchHandler): () => void {
+    const binding = { t: dispatch, handler };
+    this.#dispatchBindings.push(binding);
+    return () => {
+      const remaining: { t: string; handler: DispatchHandler }[] = [];
+      for (let index = 0; index < this.#dispatchBindings.length; index += 1) {
+        const existing = this.#dispatchBindings[index];
+        if (existing !== binding && existing !== undefined) {
+          remaining.push(existing);
+        }
+      }
+      this.#dispatchBindings = remaining;
+    };
   }
 
-  onUnknownDispatch(handler: (payload: unknown) => void): () => void {
+  onUnknownDispatch(handler: DispatchHandler): () => void {
     this.#unknownDispatchHandlers.push(handler);
     return () => {
-      const remaining: ((payload: unknown) => void)[] = [];
+      const remaining: DispatchHandler[] = [];
       for (let index = 0; index < this.#unknownDispatchHandlers.length; index += 1) {
         const existing = this.#unknownDispatchHandlers[index];
         if (existing !== handler && existing !== undefined) {
@@ -58,11 +79,17 @@ export class Client {
     };
   }
 
-  connect(_options?: { signal?: AbortSignal }): Promise<void> {
+  connect(options?: { signal?: AbortSignal }): Promise<void> {
     if (!this.#ports.gatewayEnabled) {
       return Promise.reject(
         new ConfigurationError("connect is not available on moon-discord/rest"),
       );
+    }
+    if (this.#fatal !== undefined) {
+      return Promise.reject(this.#fatal);
+    }
+    if (this.#live) {
+      return Promise.reject(new ConfigurationError("connect is already in progress"));
     }
     const intents = this.#options.intents;
     if (intents === undefined) {
@@ -72,14 +99,19 @@ export class Client {
     if (connectGateway === undefined) {
       return Promise.reject(new ConfigurationError("Gateway connection is not configured"));
     }
-    return this.#runConnect(intents, connectGateway);
+    const signal = options !== undefined && "signal" in options ? options.signal : undefined;
+    if (signal !== undefined && signal.aborted) {
+      return Promise.reject(new CancelledError("connect was aborted"));
+    }
+    this.#live = true;
+    return this.#runConnect(intents, connectGateway, signal);
   }
 
   disconnect(): Promise<void> {
-    if (this.#session !== undefined) {
-      this.#session.stop(1000);
-      this.#session = undefined;
-    }
+    this.#clearAbortConnect();
+    this.#cancelConnect(new CancelledError("disconnect cancelled connect"));
+    this.#stopSession();
+    this.#live = false;
     this.#settleClosedOk();
     return Promise.resolve();
   }
@@ -104,18 +136,52 @@ export class Client {
     return this.#rejectGatewaySend();
   }
 
-  async #runConnect(intents: number, connectGateway: GatewayConnect): Promise<void> {
+  async #runConnect(
+    intents: number,
+    connectGateway: GatewayConnect,
+    signal: AbortSignal | undefined,
+  ): Promise<void> {
+    if (signal !== undefined) {
+      const onAbort = (): void => {
+        this.#clearAbortConnect();
+        this.#cancelConnect(new CancelledError("connect was aborted"));
+        this.#stopSession();
+        this.#live = false;
+      };
+      signal.addEventListener("abort", onAbort);
+      this.#abortConnect = () => {
+        signal.removeEventListener("abort", onAbort);
+        this.#abortConnect = undefined;
+      };
+    }
     let bot: GetGatewayBot;
     try {
-      bot = await this.rest.getGatewayBot();
+      bot = await this.rest.getGatewayBot(signal === undefined ? undefined : { signal });
     } catch (error: unknown) {
-      if (error instanceof DiscordHttpError && error.status === 401) {
+      this.#clearAbortConnect();
+      this.#live = false;
+      if (error instanceof Error && error instanceof DiscordHttpError && error.status === 401) {
+        this.#haltToken(error);
         this.#settleClosedError(error);
       }
       throw error;
     }
-    return new Promise((_resolve, reject) => {
-      this.#rejectConnect = reject;
+    if (!this.#live) {
+      throw new CancelledError("connect was aborted");
+    }
+    return new Promise((resolve, reject) => {
+      this.#resolveConnect = () => {
+        this.#resolveConnect = undefined;
+        this.#rejectConnect = undefined;
+        this.#clearAbortConnect();
+        resolve();
+      };
+      this.#rejectConnect = (error: unknown) => {
+        this.#resolveConnect = undefined;
+        this.#rejectConnect = undefined;
+        this.#clearAbortConnect();
+        reject(error);
+      };
       const sessionOptions: SessionOptions = {
         url: bot.url,
         token: this.#options.token,
@@ -128,6 +194,12 @@ export class Client {
         onUnknownDispatch: (payload: UnknownDispatch) => {
           this.#emitUnknownDispatch(payload);
         },
+        onDispatch: (payload) => {
+          if (payload.t === "READY" || payload.t === "RESUMED") {
+            this.#markSessionReady();
+          }
+          this.#emitDispatch(payload.t, payload.d);
+        },
       };
       const shards = this.#options.shards;
       if (shards !== undefined && shards !== "recommended") {
@@ -135,6 +207,10 @@ export class Client {
       }
       void startSession(sessionOptions).then(
         (handle) => {
+          if (!this.#live) {
+            handle.stop(1000);
+            return;
+          }
           this.#session = handle;
         },
         (error: unknown) => {
@@ -144,9 +220,32 @@ export class Client {
     });
   }
 
+  #markSessionReady(): void {
+    const resolveConnect = this.#resolveConnect;
+    if (resolveConnect !== undefined) {
+      resolveConnect();
+    }
+  }
+
   #onUnauthorized(error: DiscordHttpError): void {
-    if (this.#session !== undefined || this.#rejectConnect !== undefined) {
+    if (this.#session !== undefined || this.#rejectConnect !== undefined || this.#live) {
+      this.#haltToken(error);
       this.#fail(error);
+    }
+  }
+
+  #haltToken(error: DiscordHttpError): void {
+    if (this.#tokenDeath.error === undefined) {
+      this.#tokenDeath.error = error;
+    }
+  }
+
+  #emitDispatch(t: string, payload: unknown): void {
+    for (let index = 0; index < this.#dispatchBindings.length; index += 1) {
+      const binding = this.#dispatchBindings[index];
+      if (binding !== undefined && binding.t === t) {
+        this.#runHandler(binding.handler, payload);
+      }
     }
   }
 
@@ -154,21 +253,54 @@ export class Client {
     for (let index = 0; index < this.#unknownDispatchHandlers.length; index += 1) {
       const handler = this.#unknownDispatchHandlers[index];
       if (handler !== undefined) {
-        handler(payload);
+        this.#runHandler(handler, payload);
       }
     }
   }
 
+  #runHandler(handler: DispatchHandler, payload: unknown): void {
+    try {
+      const result: unknown = handler(payload);
+      if (result instanceof Promise) {
+        result.then(undefined, () => {});
+      }
+    } catch {
+      // Handler throws are isolated from Session and closed.
+    }
+  }
+
   #fail(error: unknown): void {
+    if (error instanceof GatewayFatalError && error.closeCode === 4004 && this.#tokenDeath.error === undefined) {
+      this.#haltToken(
+        new DiscordHttpError({ status: 401, code: 0, message: "Gateway authentication failed" }),
+      );
+    }
+    this.#fatal = error;
+    this.#live = false;
     this.#settleClosedError(error);
+    this.#cancelConnect(error);
+    this.#stopSession();
+  }
+
+  #cancelConnect(error: unknown): void {
     const rejectConnect = this.#rejectConnect;
     if (rejectConnect !== undefined) {
+      this.#resolveConnect = undefined;
       this.#rejectConnect = undefined;
       rejectConnect(error);
     }
+  }
+
+  #stopSession(): void {
     if (this.#session !== undefined) {
       this.#session.stop(1000);
       this.#session = undefined;
+    }
+  }
+
+  #clearAbortConnect(): void {
+    if (this.#abortConnect !== undefined) {
+      this.#abortConnect();
     }
   }
 
@@ -193,6 +325,9 @@ export class Client {
       return Promise.reject(
         new ConfigurationError("Gateway send is not available on moon-discord/rest"),
       );
+    }
+    if (this.#fatal !== undefined) {
+      return Promise.reject(this.#fatal);
     }
     return Promise.reject(new ConfigurationError("Gateway send requires connect() to have resolved"));
   }

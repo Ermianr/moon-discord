@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { CancelledError, HTTP_5XX_RETRY_MS, REST_MAX_WAIT_MS, SaturatedError, TransportError } from "../errors.js";
+import { CancelledError, DiscordHttpError, HTTP_5XX_RETRY_MS, REST_MAX_WAIT_MS, SaturatedError, TransportError } from "../errors.js";
 import type { Clock, RestHttp, RestHttpRequest, RestHttpResponse } from "../ports.js";
 import { headerValue, mapHttpAdapterError, retryAfterMs, toDiscordHttpError } from "./http-error.js";
 
@@ -21,7 +21,11 @@ type BucketEntry = {
 const GLOBAL_RPS = 50;
 const GLOBAL_WINDOW_MS = 1000;
 
-export function rateLimitedHttp(http: RestHttp, clock: Clock): RestHttp {
+export function rateLimitedHttp(
+  http: RestHttp,
+  clock: Clock,
+  tokenDeath?: { error: DiscordHttpError | undefined },
+): RestHttp {
   const hashes: HashEntry[] = [];
   const buckets: BucketEntry[] = [];
   const globalSends: number[] = [];
@@ -34,7 +38,7 @@ export function rateLimitedHttp(http: RestHttp, clock: Clock): RestHttp {
       } catch {
         // Previous dispatch failed; this request still takes its turn.
       }
-      return sendWhenReady(http, clock, hashes, buckets, globalSends, httpRequest);
+      return sendWhenReady(http, clock, hashes, buckets, globalSends, httpRequest, tokenDeath);
     })();
     dispatchQueue = (async (): Promise<void> => {
       try {
@@ -56,11 +60,15 @@ async function sendWhenReady(
   buckets: BucketEntry[],
   globalSends: number[],
   httpRequest: RestHttpRequest,
+  tokenDeath?: { error: DiscordHttpError | undefined },
 ): Promise<RestHttpResponse> {
   let other5xxRetried = false;
   let retryBackoffMs = 1000;
   const signal = httpRequest.signal;
   for (;;) {
+    if (tokenDeath !== undefined && tokenDeath.error !== undefined) {
+      throw tokenDeath.error;
+    }
     throwIfAborted(signal);
     const route = routeKey(httpRequest.method, httpRequest.url);
     const major = majorResource(httpRequest.url);

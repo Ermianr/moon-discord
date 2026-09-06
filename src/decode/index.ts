@@ -92,6 +92,18 @@ export function decodeReady(value: unknown): Ready {
   };
 }
 
+export type Resumed = {};
+
+export function decodeResumed(value: unknown): Resumed {
+  if (value === undefined || value === null) {
+    return {};
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new DecodeError("RESUMED body must be an object");
+  }
+  return {};
+}
+
 function decodeReadyGuilds(value: unknown): ReadyGuild[] {
   if (!Array.isArray(value)) {
     throw new DecodeError("READY guilds must be an array");
