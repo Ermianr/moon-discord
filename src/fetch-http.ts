@@ -7,12 +7,12 @@ export function fetchHttp(): RestHttp {
         method: request.method,
         headers: request.headers,
       };
-      if (request.body !== undefined) {
-        if (typeof request.body === "string") {
-          init.body = request.body;
-        } else {
-          init.body = Buffer.from(request.body);
-        }
+      if (typeof request.body === "string") {
+        init.body = request.body;
+      } else if (request.body !== undefined) {
+        const bytes = new Uint8Array(request.body.length);
+        bytes.set(request.body);
+        init.body = bytes;
       }
       const response = await fetch(request.url, init);
       const headers: Record<string, string> = {};

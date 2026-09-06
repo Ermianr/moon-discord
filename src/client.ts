@@ -1,11 +1,12 @@
 import { ConfigurationError } from "./errors.js";
 import type { Ports } from "./ports.js";
+import { createRest, type RestSurface } from "./rest-surface.js";
 import type { ClientOptions } from "./types.js";
 
-export type RestSurface = Record<string, never>;
+export type { RestSurface };
 
 export class Client {
-  readonly rest: RestSurface = {};
+  readonly rest: RestSurface;
   readonly closed: Promise<void>;
 
   #ports: Ports;
@@ -20,6 +21,7 @@ export class Client {
     this.#resolveClosed = resolveClosed;
     this.#ports = ports;
     this.#options = options;
+    this.rest = createRest(ports.http);
   }
 
   on(_dispatch: string, _handler: (payload: unknown) => void): () => void {
