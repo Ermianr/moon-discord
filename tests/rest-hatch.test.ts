@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ConfigurationError, DiscordHttpError } from "moon-discord";
+import { DiscordHttpError } from "moon-discord";
 import { createTestClient } from "moon-discord/testing";
 import type { RestHttp } from "moon-discord/testing";
 
@@ -99,10 +99,12 @@ test("execute sends JSON body and query on the Rest HTTP adapter", async () => {
 });
 
 test("execute keeps files as a sibling list and does not send them inside JSON body", async () => {
-  let httpCalls = 0;
+  let capturedHeaders: Record<string, string> = {};
+  let capturedBody: string | Uint8Array | undefined;
   const client = createClientWithHttp({
-    request: async () => {
-      httpCalls += 1;
+    request: async (request) => {
+      capturedHeaders = request.headers;
+      capturedBody = request.body;
       return {
         status: 200,
         headers: {},
@@ -110,20 +112,18 @@ test("execute keeps files as a sibling list and does not send them inside JSON b
       };
     },
   });
-  await assert.rejects(
-    () =>
-      client.rest.execute({
-        method: "POST",
-        path: "/channels/1/messages",
-        body: { content: "hello" },
-        files: [{ filename: "a.txt", bytes: new Uint8Array([97]) }],
-      }),
-    (error: unknown) => {
-      assert.ok(error instanceof ConfigurationError);
-      return true;
-    },
-  );
-  assert.equal(httpCalls, 0);
+  await client.rest.execute({
+    method: "POST",
+    path: "/channels/1/messages",
+    body: { content: "hello" },
+    files: [{ filename: "a.txt", bytes: new Uint8Array([97]) }],
+  });
+  assert.match(capturedHeaders["Content-Type"] ?? "", /^multipart\/form-data; boundary=/);
+  assert.ok(capturedBody instanceof Uint8Array);
+  const latin1 = Buffer.from(capturedBody).toString("latin1");
+  assert.equal(latin1.includes('name="payload_json"'), true);
+  assert.equal(latin1.includes('{"content":"hello"}'), true);
+  assert.equal(latin1.includes('"files"'), false);
 });
 
 test("execute with empty files stays JSON on the Rest HTTP adapter", async () => {

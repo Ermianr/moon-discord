@@ -2,17 +2,27 @@ import {
   decodeGetGateway,
   decodeGetGatewayBot,
   decodeMessage,
+  decodeSticker,
   encodeCreateMessage,
   type CreateMessage,
   type GetGateway,
   type GetGatewayBot,
   type Message,
   type Snowflake,
+  type Sticker,
 } from "../decode/index.js";
-import { ConfigurationError, DecodeError, DiscordHttpError } from "../errors.js";
+import { DecodeError, DiscordHttpError } from "../errors.js";
 import type { Clock, RestHttp, RestHttpRequest, RestHttpResponse } from "../ports.js";
+import {
+  encodeNamedForm,
+  encodePayloadJsonFiles,
+  filePart,
+  type OutboundFile,
+} from "./multipart.js";
 import { rateLimitedHttp } from "./rate-limit.js";
 import { rejectUnlessOk, responseBodyText } from "./http-error.js";
+
+export type { OutboundFile };
 
 const USER_AGENT = "DiscordBot (https://github.com/Ermianr/moon-discord, 0.0.0)";
 const API_BASE = "https://discord.com/api/v10";
@@ -31,23 +41,29 @@ export type RestExecuteOptions = {
   signal?: AbortSignal;
 };
 
-export type OutboundFile = {
-  filename: string;
-  bytes: Uint8Array;
-  contentType?: string;
+export type CreateMessageBody = CreateMessage & {
+  files?: OutboundFile[];
+};
+
+export type CreateGuildSticker = {
+  name: string;
+  description: string;
+  tags: string;
+  file: OutboundFile;
 };
 
 export type RestSurface = {
   execute: (request: RestExecuteOptions) => Promise<unknown>;
   getGateway: (options?: RestCallOptions) => Promise<GetGateway>;
   getGatewayBot: (options?: RestCallOptions) => Promise<GetGatewayBot>;
-  createMessage: (channelId: Snowflake, body: CreateMessage, options?: RestCallOptions) => Promise<Message>;
+  createMessage: (channelId: Snowflake, body: CreateMessageBody, options?: RestCallOptions) => Promise<Message>;
   deleteMessage: (channelId: Snowflake, messageId: Snowflake, options?: RestCallOptions) => Promise<void>;
+  createGuildSticker: (guildId: Snowflake, body: CreateGuildSticker, options?: RestCallOptions) => Promise<Sticker>;
 };
 
 export type CreateMessageDispatch = (
   channelId: Snowflake,
-  body: CreateMessage,
+  body: CreateMessageBody,
   options?: RestCallOptions,
 ) => Promise<RestHttpResponse>;
 
@@ -65,15 +81,23 @@ function createMessageDispatch(
     "User-Agent": USER_AGENT,
   };
   return async (channelId, body, options) => {
+    const json = encodeCreateMessage(body);
+    const files = "files" in body ? body.files : undefined;
+    const headers: Record<string, string> = {
+      ...botHeaders,
+      "Content-Type": "application/json",
+    };
     const httpRequest: RestHttpRequest = {
       method: "POST",
       url: `${API_BASE}/channels/${channelId}/messages`,
-      headers: {
-        ...botHeaders,
-        "Content-Type": "application/json",
-      },
-      body: encodeCreateMessage(body),
+      headers,
+      body: json,
     };
+    if (files !== undefined && files.length > 0) {
+      const encoded = encodePayloadJsonFiles(json, files);
+      headers["Content-Type"] = encoded.contentType;
+      httpRequest.body = encoded.body;
+    }
     attachSignal(httpRequest, options);
     const response = await http.request(httpRequest);
     try {
@@ -112,9 +136,6 @@ export function createRest(
   const dispatchCreateMessage = createMessageDispatch(http, token, onUnauthorized);
   return {
     execute: async (request) => {
-      if ("files" in request && request.files !== undefined && request.files.length > 0) {
-        throw new ConfigurationError("Rest hatch files require multipart encoding");
-      }
       const headers: Record<string, string> = {
         ...botHeaders,
       };
@@ -126,7 +147,13 @@ export function createRest(
         url: hatchUrl(request.path, request.query),
         headers,
       };
-      if ("body" in request && request.body !== undefined) {
+      const files = "files" in request ? request.files : undefined;
+      if (files !== undefined && files.length > 0) {
+        const payloadJson = JSON.stringify("body" in request && request.body !== undefined ? request.body : {});
+        const encoded = encodePayloadJsonFiles(payloadJson, files);
+        headers["Content-Type"] = encoded.contentType;
+        httpRequest.body = encoded.body;
+      } else if ("body" in request && request.body !== undefined) {
         headers["Content-Type"] = "application/json";
         httpRequest.body = JSON.stringify(request.body);
       }
@@ -178,7 +205,32 @@ export function createRest(
       const response = await http.request(httpRequest);
       rejectHttp(response);
     },
+    createGuildSticker: async (guildId, body, options) => {
+      const encoded = encodeNamedForm([
+        { name: "name", body: utf8(body.name) },
+        { name: "description", body: utf8(body.description) },
+        { name: "tags", body: utf8(body.tags) },
+        filePart("file", "file" in body ? body.file : undefined, "file"),
+      ]);
+      const httpRequest: RestHttpRequest = {
+        method: "POST",
+        url: `${API_BASE}/guilds/${guildId}/stickers`,
+        headers: {
+          ...botHeaders,
+          "Content-Type": encoded.contentType,
+        },
+        body: encoded.body,
+      };
+      attachSignal(httpRequest, options);
+      const response = await http.request(httpRequest);
+      rejectHttp(response);
+      return decodeSticker(parseJsonBody(response, "Create Guild Sticker"));
+    },
   };
+}
+
+function utf8(value: string): Uint8Array {
+  return new TextEncoder().encode(value);
 }
 
 function hatchUrl(path: string, query: Record<string, string> | undefined): string {

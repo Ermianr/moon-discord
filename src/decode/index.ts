@@ -174,6 +174,56 @@ export type CreateMessage = {
   enforce_nonce?: boolean;
 };
 
+export type Sticker = {
+  id: Snowflake;
+  name: string;
+  description: string | null;
+  tags: string;
+  type: number;
+  format_type: number;
+};
+
+export function decodeSticker(value: unknown): Sticker {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new DecodeError("Sticker body must be an object");
+  }
+  if (
+    !("id" in value) ||
+    !("name" in value) ||
+    !("description" in value) ||
+    !("tags" in value) ||
+    !("type" in value) ||
+    !("format_type" in value)
+  ) {
+    throw new DecodeError("Sticker body is missing required fields");
+  }
+  const name = value.name;
+  const description = value.description;
+  const tags = value.tags;
+  const type = value.type;
+  const format_type = value.format_type;
+  if (typeof name !== "string") {
+    throw new DecodeError("Sticker name must be a string");
+  }
+  if (description !== null && typeof description !== "string") {
+    throw new DecodeError("Sticker description must be a string or null");
+  }
+  if (typeof tags !== "string") {
+    throw new DecodeError("Sticker tags must be a string");
+  }
+  if (typeof type !== "number" || typeof format_type !== "number") {
+    throw new DecodeError("Sticker type and format_type must be numbers");
+  }
+  return {
+    id: decodeSnowflake(value.id, "Sticker.id"),
+    name,
+    description,
+    tags,
+    type,
+    format_type,
+  };
+}
+
 export function decodeSnowflake(value: unknown, field: string): Snowflake {
   if (typeof value === "string") {
     return value;
