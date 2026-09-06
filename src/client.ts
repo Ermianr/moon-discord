@@ -1,13 +1,45 @@
 import type { GetGatewayBot } from "./decode/index.js";
-import { CancelledError, ConfigurationError, DiscordHttpError, GatewayFatalError } from "./errors.js";
+import {
+  encodePresenceUpdate,
+  encodeRequestChannelInfo,
+  encodeRequestGuildMembers,
+  encodeRequestSoundboardSounds,
+  encodeVoiceStateUpdate,
+  type PresenceUpdate,
+  type RequestChannelInfo,
+  type RequestGuildMembers,
+  type RequestSoundboardSounds,
+  type VoiceStateUpdate,
+} from "./decode/gateway-send.js";
+import {
+  CancelledError,
+  ConfigurationError,
+  DiscordHttpError,
+  GATEWAY_SESSION_WAIT_MS,
+  GatewayFatalError,
+  SaturatedError,
+  TransportError,
+} from "./errors.js";
 import type { GatewayConnect, Ports } from "./ports.js";
+import { fetchHttp } from "./fetch-http.js";
+import { connectGatewayTransport } from "./gateway-transport.js";
 import { createRest, type RestSurface } from "./rest-surface.js";
 import { startSession, type SessionHandle, type SessionOptions, type UnknownDispatch } from "./session.js";
+import { processOwnsGuild } from "./shard-membership.js";
+import { systemClock } from "./system-clock.js";
 import type { ClientOptions } from "./types.js";
 
 export type { RestSurface };
 
 type DispatchHandler = (payload: unknown) => void;
+
+type SessionWaiter = {
+  resolve: () => void;
+  reject: (error: Error) => void;
+  cancelTimer: () => void;
+  signal?: AbortSignal;
+  onAbort?: () => void;
+};
 
 export class Client {
   readonly rest: RestSurface;
@@ -17,20 +49,27 @@ export class Client {
   #options: ClientOptions;
   #session: SessionHandle | undefined;
   #resolveClosed = () => {};
-  #rejectClosed = (_error: unknown) => {};
+  #rejectClosed = (_error: Error) => {};
   #closedSettled = false;
   #live = false;
-  #fatal: unknown | undefined;
+  #fatal: Error | undefined;
   #tokenDeath: { error: DiscordHttpError | undefined } = { error: undefined };
   #resolveConnect: (() => void) | undefined;
-  #rejectConnect: ((error: unknown) => void) | undefined;
+  #rejectConnect: ((error: Error) => void) | undefined;
   #unknownDispatchHandlers: DispatchHandler[] = [];
   #dispatchBindings: { t: string; handler: DispatchHandler }[] = [];
-  #abortConnect: (() => void) | undefined;
+  #connectAbortSignal: AbortSignal | undefined;
+  #connectAbortHandler: (() => void) | undefined;
+  #connectResolved = false;
+  #sessionReady = false;
+  #shardCount = 1;
+  #ownedShardId = 0;
+  #lastPresence: PresenceUpdate | undefined;
+  #sessionWaiters: SessionWaiter[] = [];
 
   constructor(options: ClientOptions, ports: Ports) {
     let resolveClosed = () => {};
-    let rejectClosed = (_error: unknown) => {};
+    let rejectClosed = (_error: Error) => {};
     this.closed = new Promise((resolve, reject) => {
       resolveClosed = () => {
         resolve();
@@ -44,7 +83,7 @@ export class Client {
     this.#ports = ports;
     this.#options = options;
     this.rest = createRest(ports.http, options.token, ports.clock, (error: unknown) => {
-      if (error instanceof DiscordHttpError) {
+      if (error instanceof Error && error.name === "DiscordHttpError") {
         this.#onUnauthorized(error);
       }
     }, this.#tokenDeath);
@@ -110,30 +149,63 @@ export class Client {
   disconnect(): Promise<void> {
     this.#clearAbortConnect();
     this.#cancelConnect(new CancelledError("disconnect cancelled connect"));
+    this.#connectResolved = false;
+    this.#sessionReady = false;
+    this.#lastPresence = undefined;
+    this.#rejectSessionWaiters(new CancelledError("disconnect cancelled Gateway send"));
     this.#stopSession();
     this.#live = false;
     this.#settleClosedOk();
     return Promise.resolve();
   }
 
-  updatePresence(_presence: unknown, _options?: { signal?: AbortSignal }): Promise<void> {
-    return this.#rejectGatewaySend();
+  updatePresence(presence: PresenceUpdate, options?: { signal?: AbortSignal }): Promise<void> {
+    const early = this.#rejectGatewaySend();
+    if (early !== undefined) {
+      return early;
+    }
+    const encoded = encodePresenceUpdate(presence);
+    if (utf8ByteLength(encoded.json) > 4096) {
+      return Promise.reject(new ConfigurationError("Gateway payload exceeds 4096 UTF-8 bytes"));
+    }
+    this.#lastPresence = encoded.d;
+    if (this.#session !== undefined) {
+      this.#session.setIdentifyPresence(encoded.d);
+    }
+    if (!this.#sessionReady || this.#session === undefined) {
+      return Promise.resolve();
+    }
+    const signal = options !== undefined && "signal" in options ? options.signal : undefined;
+    return this.#session.enqueueApplication(encoded.json, signal);
   }
 
-  updateVoiceState(_voiceState: unknown, _options?: { signal?: AbortSignal }): Promise<void> {
-    return this.#rejectGatewaySend();
+  updateVoiceState(voiceState: VoiceStateUpdate, options?: { signal?: AbortSignal }): Promise<void> {
+    return this.#guildSend(voiceState.guild_id, encodeVoiceStateUpdate(voiceState), options);
   }
 
-  requestGuildMembers(_query: unknown, _options?: { signal?: AbortSignal }): Promise<void> {
-    return this.#rejectGatewaySend();
+  requestGuildMembers(query: RequestGuildMembers, options?: { signal?: AbortSignal }): Promise<void> {
+    if ("nonce" in query && utf8ByteLength(query.nonce) > 32) {
+      return Promise.reject(new ConfigurationError("requestGuildMembers nonce exceeds 32 bytes"));
+    }
+    return this.#guildSend(query.guild_id, encodeRequestGuildMembers(query), options);
   }
 
-  requestSoundboardSounds(_query: unknown, _options?: { signal?: AbortSignal }): Promise<void> {
-    return this.#rejectGatewaySend();
+  requestSoundboardSounds(query: RequestSoundboardSounds, options?: { signal?: AbortSignal }): Promise<void> {
+    const early = this.#rejectGatewaySend();
+    if (early !== undefined) {
+      return early;
+    }
+    for (let index = 0; index < query.guild_ids.length; index += 1) {
+      const guildId = query.guild_ids[index];
+      if (guildId !== undefined && !this.#ownsGuild(guildId)) {
+        return Promise.reject(new ConfigurationError("Gateway send targets a shard this process does not own"));
+      }
+    }
+    return this.#enqueueAfterSessionReady(encodeRequestSoundboardSounds(query), options);
   }
 
-  requestChannelInfo(_query: unknown, _options?: { signal?: AbortSignal }): Promise<void> {
-    return this.#rejectGatewaySend();
+  requestChannelInfo(query: RequestChannelInfo, options?: { signal?: AbortSignal }): Promise<void> {
+    return this.#guildSend(query.guild_id, encodeRequestChannelInfo(query), options);
   }
 
   async #runConnect(
@@ -149,10 +221,8 @@ export class Client {
         this.#live = false;
       };
       signal.addEventListener("abort", onAbort);
-      this.#abortConnect = () => {
-        signal.removeEventListener("abort", onAbort);
-        this.#abortConnect = undefined;
-      };
+      this.#connectAbortSignal = signal;
+      this.#connectAbortHandler = onAbort;
     }
     let bot: GetGatewayBot;
     try {
@@ -160,8 +230,10 @@ export class Client {
     } catch (error: unknown) {
       this.#clearAbortConnect();
       this.#live = false;
-      if (error instanceof Error && error instanceof DiscordHttpError && error.status === 401) {
-        this.#haltToken(error);
+      if (error instanceof Error && error.name === "DiscordHttpError") {
+        this.#haltToken(
+          new DiscordHttpError({ status: 401, code: 0, message: error.message }),
+        );
         this.#settleClosedError(error);
       }
       throw error;
@@ -176,7 +248,7 @@ export class Client {
         this.#clearAbortConnect();
         resolve();
       };
-      this.#rejectConnect = (error: unknown) => {
+      this.#rejectConnect = (error: Error) => {
         this.#resolveConnect = undefined;
         this.#rejectConnect = undefined;
         this.#clearAbortConnect();
@@ -189,13 +261,18 @@ export class Client {
         clock: this.#ports.clock,
         connect: connectGateway,
         onFatal: (error: GatewayFatalError) => {
-          this.#fail(error);
+          this.#failGateway(error);
         },
         onUnknownDispatch: (payload: UnknownDispatch) => {
           this.#emitUnknownDispatch(payload);
         },
+        onReadyLost: () => {
+          this.#sessionReady = false;
+        },
         onDispatch: (payload) => {
           if (payload.t === "READY" || payload.t === "RESUMED") {
+            this.#sessionReady = true;
+            this.#resolveSessionWaiters();
             this.#markSessionReady();
           }
           this.#emitDispatch(payload.t, payload.d);
@@ -204,32 +281,40 @@ export class Client {
       const shards = this.#options.shards;
       if (shards !== undefined && shards !== "recommended") {
         sessionOptions.shard = [shards.id, shards.count];
+        this.#shardCount = shards.count;
+        this.#ownedShardId = shards.id;
+      } else {
+        this.#shardCount = bot.shards;
+        this.#ownedShardId = 0;
       }
-      void startSession(sessionOptions).then(
-        (handle) => {
+      void (async () => {
+        try {
+          const handle = await startSession(sessionOptions);
           if (!this.#live) {
             handle.stop(1000);
             return;
           }
           this.#session = handle;
-        },
-        (error: unknown) => {
+        } catch (error: unknown) {
           this.#fail(error);
-        },
-      );
+        }
+      })();
     });
   }
 
   #markSessionReady(): void {
+    this.#connectResolved = true;
     const resolveConnect = this.#resolveConnect;
     if (resolveConnect !== undefined) {
       resolveConnect();
     }
   }
 
-  #onUnauthorized(error: DiscordHttpError): void {
+  #onUnauthorized(error: Error): void {
     if (this.#session !== undefined || this.#rejectConnect !== undefined || this.#live) {
-      this.#haltToken(error);
+      this.#haltToken(
+        new DiscordHttpError({ status: 401, code: 0, message: error.message }),
+      );
       this.#fail(error);
     }
   }
@@ -262,27 +347,42 @@ export class Client {
     try {
       const result: unknown = handler(payload);
       if (result instanceof Promise) {
-        result.then(undefined, () => {});
+        void result.then(() => {});
       }
     } catch {
       // Handler throws are isolated from Session and closed.
     }
   }
 
-  #fail(error: unknown): void {
-    if (error instanceof GatewayFatalError && error.closeCode === 4004 && this.#tokenDeath.error === undefined) {
+  #failGateway(error: GatewayFatalError): void {
+    if (error.closeCode === 4004 && this.#tokenDeath.error === undefined) {
       this.#haltToken(
         new DiscordHttpError({ status: 401, code: 0, message: "Gateway authentication failed" }),
       );
     }
     this.#fatal = error;
     this.#live = false;
+    this.#connectResolved = false;
+    this.#sessionReady = false;
     this.#settleClosedError(error);
     this.#cancelConnect(error);
-    this.#stopSession();
+    this.#rejectSessionWaiters(error);
+    this.#stopSession(error);
   }
 
-  #cancelConnect(error: unknown): void {
+  #fail(error: unknown): void {
+    const fatal = error instanceof Error ? error : new TransportError();
+    this.#fatal = fatal;
+    this.#live = false;
+    this.#connectResolved = false;
+    this.#sessionReady = false;
+    this.#settleClosedError(fatal);
+    this.#cancelConnect(fatal);
+    this.#rejectSessionWaiters(fatal);
+    this.#stopSession(fatal);
+  }
+
+  #cancelConnect(error: Error): void {
     const rejectConnect = this.#rejectConnect;
     if (rejectConnect !== undefined) {
       this.#resolveConnect = undefined;
@@ -291,20 +391,126 @@ export class Client {
     }
   }
 
-  #stopSession(): void {
+  #stopSession(reason?: Error): void {
     if (this.#session !== undefined) {
-      this.#session.stop(1000);
+      this.#session.stop(1000, reason);
       this.#session = undefined;
     }
   }
 
-  #clearAbortConnect(): void {
-    if (this.#abortConnect !== undefined) {
-      this.#abortConnect();
+  #ownsGuild(guildId: string): boolean {
+    return processOwnsGuild(guildId, this.#shardCount, this.#ownedShardId);
+  }
+
+  #guildSend(guildId: string, json: string, options?: { signal?: AbortSignal }): Promise<void> {
+    const early = this.#rejectGatewaySend();
+    if (early !== undefined) {
+      return early;
+    }
+    if (!this.#ownsGuild(guildId)) {
+      return Promise.reject(new ConfigurationError("Gateway send targets a shard this process does not own"));
+    }
+    return this.#enqueueAfterSessionReady(json, options);
+  }
+
+  async #enqueueAfterSessionReady(json: string, options?: { signal?: AbortSignal }): Promise<void> {
+    if (utf8ByteLength(json) > 4096) {
+      throw new ConfigurationError("Gateway payload exceeds 4096 UTF-8 bytes");
+    }
+    const signal = options !== undefined && "signal" in options ? options.signal : undefined;
+    await this.#waitForSession(signal);
+    if (this.#session === undefined) {
+      throw new CancelledError("Gateway send was cancelled");
+    }
+    return this.#session.enqueueApplication(json, signal);
+  }
+
+  #waitForSession(signal: AbortSignal | undefined): Promise<void> {
+    if (this.#sessionReady) {
+      return Promise.resolve();
+    }
+    if (signal !== undefined && signal.aborted) {
+      return Promise.reject(new CancelledError("Gateway send was aborted"));
+    }
+    return new Promise((resolve, reject) => {
+      const waiter: SessionWaiter = {
+        resolve,
+        reject,
+        cancelTimer: () => {},
+      };
+      waiter.cancelTimer = this.#ports.clock.schedule(GATEWAY_SESSION_WAIT_MS, () => {
+        this.#removeSessionWaiter(waiter);
+        reject(new SaturatedError({ kind: "gateway_session_wait" }));
+      });
+      if (signal !== undefined) {
+        const onAbort = (): void => {
+          waiter.cancelTimer();
+          this.#removeSessionWaiter(waiter);
+          if (signal !== undefined && waiter.onAbort !== undefined) {
+            signal.removeEventListener("abort", waiter.onAbort);
+          }
+          reject(new CancelledError("Gateway send was aborted"));
+        };
+        signal.addEventListener("abort", onAbort);
+        waiter.signal = signal;
+        waiter.onAbort = onAbort;
+      }
+      this.#sessionWaiters.push(waiter);
+    });
+  }
+
+  #removeSessionWaiter(target: SessionWaiter): void {
+    const remaining: SessionWaiter[] = [];
+    for (let index = 0; index < this.#sessionWaiters.length; index += 1) {
+      const waiter = this.#sessionWaiters[index];
+      if (waiter !== undefined && waiter !== target) {
+        remaining.push(waiter);
+      }
+    }
+    this.#sessionWaiters = remaining;
+  }
+
+  #resolveSessionWaiters(): void {
+    const waiters = this.#sessionWaiters;
+    this.#sessionWaiters = [];
+    for (let index = 0; index < waiters.length; index += 1) {
+      const waiter = waiters[index];
+      if (waiter !== undefined) {
+        waiter.cancelTimer();
+        if (waiter.signal !== undefined && waiter.onAbort !== undefined) {
+          waiter.signal.removeEventListener("abort", waiter.onAbort);
+        }
+        waiter.resolve();
+      }
     }
   }
 
-  #settleClosedError(error: unknown): void {
+  #rejectSessionWaiters(error: Error): void {
+    const waiters = this.#sessionWaiters;
+    this.#sessionWaiters = [];
+    for (let index = 0; index < waiters.length; index += 1) {
+      const waiter = waiters[index];
+      if (waiter !== undefined) {
+        waiter.cancelTimer();
+        if (waiter.signal !== undefined && waiter.onAbort !== undefined) {
+          waiter.signal.removeEventListener("abort", waiter.onAbort);
+        }
+        waiter.reject(error);
+      }
+    }
+  }
+
+  #clearAbortConnect(): void {
+    const signal = this.#connectAbortSignal;
+    const handler = this.#connectAbortHandler;
+    this.#connectAbortSignal = undefined;
+    this.#connectAbortHandler = undefined;
+    if (signal !== undefined && handler !== undefined) {
+      signal.removeEventListener("abort", handler);
+    }
+  }
+
+  #settleClosedError(error: Error): void {
     if (this.#closedSettled) {
       return;
     }
@@ -320,7 +526,7 @@ export class Client {
     this.#resolveClosed();
   }
 
-  #rejectGatewaySend(): Promise<void> {
+  #rejectGatewaySend(): Promise<void> | undefined {
     if (!this.#ports.gatewayEnabled) {
       return Promise.reject(
         new ConfigurationError("Gateway send is not available on moon-discord/rest"),
@@ -329,8 +535,15 @@ export class Client {
     if (this.#fatal !== undefined) {
       return Promise.reject(this.#fatal);
     }
-    return Promise.reject(new ConfigurationError("Gateway send requires connect() to have resolved"));
+    if (!this.#connectResolved) {
+      return Promise.reject(new ConfigurationError("Gateway send requires connect() to have resolved"));
+    }
+    return undefined;
   }
+}
+
+function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).length;
 }
 
 export function createClient(options: ClientOptions, ports: Ports): Client {

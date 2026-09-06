@@ -338,6 +338,192 @@ export function decodeMessageList(value: unknown): Message[] {
   return messages;
 }
 
+export type GuildMember = {
+  user?: User;
+};
+
+export type GuildMembersChunk = {
+  guild_id: Snowflake;
+  members: GuildMember[];
+  chunk_index: number;
+  chunk_count: number;
+  nonce?: string;
+};
+
+export function decodeGuildMembersChunk(value: unknown): GuildMembersChunk {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new DecodeError("GUILD_MEMBERS_CHUNK body must be an object");
+  }
+  if (!("guild_id" in value) || !("members" in value) || !("chunk_index" in value) || !("chunk_count" in value)) {
+    throw new DecodeError("GUILD_MEMBERS_CHUNK body is missing required fields");
+  }
+  const chunk_index = value.chunk_index;
+  const chunk_count = value.chunk_count;
+  if (typeof chunk_index !== "number" || typeof chunk_count !== "number") {
+    throw new DecodeError("GUILD_MEMBERS_CHUNK chunk_index and chunk_count must be numbers");
+  }
+  if (!Array.isArray(value.members)) {
+    throw new DecodeError("GUILD_MEMBERS_CHUNK members must be an array");
+  }
+  const members: GuildMember[] = [];
+  for (let index = 0; index < value.members.length; index += 1) {
+    members.push(decodeGuildMember(value.members[index], `GUILD_MEMBERS_CHUNK.members[${index}]`));
+  }
+  const chunk: GuildMembersChunk = {
+    guild_id: decodeSnowflake(value.guild_id, "GUILD_MEMBERS_CHUNK.guild_id"),
+    members,
+    chunk_index,
+    chunk_count,
+  };
+  if ("nonce" in value) {
+    const nonce = value.nonce;
+    if (typeof nonce !== "string") {
+      throw new DecodeError("GUILD_MEMBERS_CHUNK nonce must be a string");
+    }
+    chunk.nonce = nonce;
+  }
+  return chunk;
+}
+
+export type RateLimitedMeta = {
+  guild_id?: Snowflake;
+  nonce?: string;
+};
+
+export type RateLimited = {
+  opcode: number;
+  retry_after: number;
+  meta: RateLimitedMeta;
+};
+
+export function decodeRateLimited(value: unknown): RateLimited {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new DecodeError("RATE_LIMITED body must be an object");
+  }
+  if (!("opcode" in value) || !("retry_after" in value) || !("meta" in value)) {
+    throw new DecodeError("RATE_LIMITED body is missing required fields");
+  }
+  const opcode = value.opcode;
+  const retry_after = value.retry_after;
+  if (typeof opcode !== "number" || typeof retry_after !== "number") {
+    throw new DecodeError("RATE_LIMITED opcode and retry_after must be numbers");
+  }
+  if (typeof value.meta !== "object" || value.meta === null || Array.isArray(value.meta)) {
+    throw new DecodeError("RATE_LIMITED meta must be an object");
+  }
+  const meta: RateLimitedMeta = {};
+  if ("guild_id" in value.meta) {
+    meta.guild_id = decodeSnowflake(value.meta.guild_id, "RATE_LIMITED.meta.guild_id");
+  }
+  if ("nonce" in value.meta) {
+    const nonce = value.meta.nonce;
+    if (typeof nonce !== "string") {
+      throw new DecodeError("RATE_LIMITED.meta.nonce must be a string");
+    }
+    meta.nonce = nonce;
+  }
+  return { opcode, retry_after, meta };
+}
+
+export type ChannelInfoChannel = {
+  id: Snowflake;
+  status?: string | null;
+  voice_start_time?: number | null;
+};
+
+export type ChannelInfo = {
+  guild_id: Snowflake;
+  channels: ChannelInfoChannel[];
+};
+
+export function decodeChannelInfo(value: unknown): ChannelInfo {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new DecodeError("CHANNEL_INFO body must be an object");
+  }
+  if (!("guild_id" in value) || !("channels" in value)) {
+    throw new DecodeError("CHANNEL_INFO body is missing required fields");
+  }
+  if (!Array.isArray(value.channels)) {
+    throw new DecodeError("CHANNEL_INFO channels must be an array");
+  }
+  const channels: ChannelInfoChannel[] = [];
+  for (let index = 0; index < value.channels.length; index += 1) {
+    channels.push(decodeChannelInfoChannel(value.channels[index], `CHANNEL_INFO.channels[${index}]`));
+  }
+  return {
+    guild_id: decodeSnowflake(value.guild_id, "CHANNEL_INFO.guild_id"),
+    channels,
+  };
+}
+
+export type SoundboardSound = {
+  sound_id: Snowflake;
+};
+
+export type SoundboardSounds = {
+  guild_id: Snowflake;
+  soundboard_sounds: SoundboardSound[];
+};
+
+export function decodeSoundboardSounds(value: unknown): SoundboardSounds {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new DecodeError("SOUNDBOARD_SOUNDS body must be an object");
+  }
+  if (!("guild_id" in value) || !("soundboard_sounds" in value)) {
+    throw new DecodeError("SOUNDBOARD_SOUNDS body is missing required fields");
+  }
+  if (!Array.isArray(value.soundboard_sounds)) {
+    throw new DecodeError("SOUNDBOARD_SOUNDS soundboard_sounds must be an array");
+  }
+  const soundboard_sounds: SoundboardSound[] = [];
+  for (let index = 0; index < value.soundboard_sounds.length; index += 1) {
+    const entry = value.soundboard_sounds[index];
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry) || !("sound_id" in entry)) {
+      throw new DecodeError(`SOUNDBOARD_SOUNDS.soundboard_sounds[${index}] must be an object with sound_id`);
+    }
+    soundboard_sounds.push({
+      sound_id: decodeSnowflake(entry.sound_id, `SOUNDBOARD_SOUNDS.soundboard_sounds[${index}].sound_id`),
+    });
+  }
+  return {
+    guild_id: decodeSnowflake(value.guild_id, "SOUNDBOARD_SOUNDS.guild_id"),
+    soundboard_sounds,
+  };
+}
+
+function decodeGuildMember(value: unknown, field: string): GuildMember {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new DecodeError(`${field} must be an object`);
+  }
+  const member: GuildMember = {};
+  if ("user" in value) {
+    member.user = decodeUser(value.user, `${field}.user`);
+  }
+  return member;
+}
+
+function decodeChannelInfoChannel(value: unknown, field: string): ChannelInfoChannel {
+  if (typeof value !== "object" || value === null || Array.isArray(value) || !("id" in value)) {
+    throw new DecodeError(`${field} must be an object with id`);
+  }
+  const channel: ChannelInfoChannel = { id: decodeSnowflake(value.id, `${field}.id`) };
+  if ("status" in value) {
+    const status = value.status;
+    if (status !== null && typeof status !== "string") {
+      throw new DecodeError(`${field}.status must be a string or null`);
+    }
+    channel.status = status;
+  }
+  if ("voice_start_time" in value) {
+    const voice_start_time = value.voice_start_time;
+    if (voice_start_time !== null && typeof voice_start_time !== "number") {
+      throw new DecodeError(`${field}.voice_start_time must be a number or null`);
+    }
+    channel.voice_start_time = voice_start_time;
+  }
+  return channel;
+}
+
 function decodeNullableTimestamp(value: unknown, field: string): Timestamp | null {
   if (value === null) {
     return null;
